@@ -45,16 +45,4 @@ src/
 
 游戏AJAX请求 → 内容脚本(jQuery ajaxSuccess) → webext-bridge → 后台脚本 → useDataCenter处理 → Chrome存储 → UI展示
 
-## Agent skills
-
-### Issue tracker
-
-Issues live as local markdown files under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Default five canonical labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Single-context: one `CONTEXT.md` + `docs/adr/` at repo root. See `docs/agents/domain.md`.
+> Fork 专属规则：见 `docs/fork/RULES.md`（优先于本文件中冲突的部分）。

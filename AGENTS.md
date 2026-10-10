@@ -45,4 +45,4 @@ src/
 
 游戏AJAX请求 → 内容脚本(jQuery ajaxSuccess) → webext-bridge → 后台脚本 → useDataCenter处理 → Chrome存储 → UI展示
 
-> Fork 专属规则：见 `docs/fork/RULES.md`（优先于本文件中冲突的部分）。
+> Fork 規則：新增或修改任何檔案前，先讀 `docs/fork/RULES.md`（與本檔衝突時以它為準）。

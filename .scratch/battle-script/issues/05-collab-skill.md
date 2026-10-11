@@ -77,11 +77,13 @@
 - skill 的實際協作，以及腳本匯入 extension 後能否隨戰鬥正確更新，屬於 06，本 ticket 沒有做。
 - 預兆標籤文字、計量條刻度、boss buff 的實際 status 字串都要靠實戰資料確認。確認後，可以把 `SKILL.md`「條件值的來源」的說明改成定論。
 - `scripts/tn/convert-reference.ts`（02）在完全沒有參考資料時也印「（來源未變）」，容易誤導，本 ticket 沒有修改。
-- 本機用 Git Bash 執行 `./node_modules/.bin/eslint .` 全量檢查時會 segfault（exit 139）；改在 PowerShell 執行 `pnpm lint` 則正常。
+- 本機用 Git Bash 執行 `./node_modules/.bin/eslint .` 全量檢查時會 segfault（exit 139）；改在 PowerShell 執行 `pnpm lint` 則正常。PowerShell 也偶爾在寫完結果後以 0xC0000005 結束，重跑即正常。
+- 合併 04 後，skill 裡的側欄頁操作已改成 04 的版面：「目前戰鬥」分頁的「複製目前關卡資訊」與「腳本：」選單，「腳本管理」分頁的「匯入戰鬥腳本」（可多選）。
+- 04 的 `manage.ts` 有一個不匯出的 `readScript`，做的事與驗證 CLI 相同（`JSON.parse` + `validateScript` + 錯誤字串），目前兩邊輸出的字樣一致。本 ticket 依指示直接呼叫 `validateScript`，沒有改用它；之後若要讓 CLI 與匯入共用同一段程式，可以匯出 `readScript` 給 CLI 使用。
 
-### 驗證紀錄
+### 驗證紀錄（合併 04 後）
 
-- 測試：`npx tsx --test "src/tn/**/*.test.ts" "scripts/tn/**/*.test.ts"` 共 66 個，全部通過（新增 7 個）。
+- 測試：`npx tsx --test "src/tn/**/*.test.ts" "scripts/tn/**/*.test.ts"` 共 75 個，全部通過（本 ticket 新增 7 個）。
 - `pnpm tc`、`pnpm bp` 通過。
 - `CI=1 pnpm lint` 共 291 problems，與基準相同；新增與修改的檔案都是 0 error、0 warning（`.claude/**` 不在 lint 範圍內）。
 - `git diff --name-only upstream/main...HEAD` 只含 fork 路徑與白名單檔。

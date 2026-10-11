@@ -1,7 +1,7 @@
 // 戰鬥腳本驗證：npx tsx scripts/tn/validate-battle-script.ts <檔案...>
 import { readFileSync } from 'node:fs'
 // 以相對路徑 import：tsx 只從 cwd 的 tsconfig 讀 ~/ alias，在其他目錄執行會解析失敗；upstream 的 scripts/*.ts 也用相對路徑（例如 ../manifest.json）
-import { validateScript } from '../../src/tn/battle-script/core'
+import { readScript } from '../../src/tn/battle-script/manage'
 
 /** 檢查一個檔案，回傳錯誤說明；通過時為空陣列 */
 function check(file: string): string[] {
@@ -12,16 +12,9 @@ function check(file: string): string[] {
   catch (error) {
     return [`無法讀取檔案：${String(error)}`]
   }
-  let input: unknown
-  try {
-    input = JSON.parse(text)
-  }
-  catch (error) {
-    return [`不是有效的 JSON：${String(error)}`]
-  }
-  const result = validateScript(input)
-  // 與側欄頁匯入失敗時相同的「path：message」；path 為空字串時只有 message
-  return result.ok ? [] : result.errors.map(({ path, message }) => (path ? `${path}：${message}` : message))
+  // 與側欄頁匯入共用解析與驗證，錯誤字樣相同
+  const result = readScript(text)
+  return result.ok ? [] : result.errors
 }
 
 const files = process.argv.slice(2)

@@ -19,8 +19,8 @@ export interface ImportResult {
   failures: { fileName: string, errors: string[] }[]
 }
 
-/** 解析並驗證一個檔案；失敗時回傳可直接顯示的錯誤訊息 */
-function readScript(text: string): { ok: true, script: BattleScript } | { ok: false, errors: string[] } {
+/** 解析並驗證一個檔案的內容，側欄頁匯入與驗證 CLI 共用；失敗時回傳可直接顯示的錯誤訊息 */
+export function readScript(text: string): { ok: true, script: BattleScript } | { ok: false, errors: string[] } {
   let input: unknown
   try {
     input = JSON.parse(text)

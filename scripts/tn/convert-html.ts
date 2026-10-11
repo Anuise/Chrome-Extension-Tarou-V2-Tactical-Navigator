@@ -1,5 +1,5 @@
 // 參考資料轉譯：把存下的整頁 HTML 轉成知識庫 Markdown（純函式，不讀寫檔案）
-import type { Cheerio, CheerioAPI } from 'cheerio'
+import type { Cheerio, CheerioAPI, SelectorType } from 'cheerio'
 import { load } from 'cheerio'
 
 export const CATEGORIES = ['boss', 'guide', 'character', 'summon'] as const
@@ -49,26 +49,65 @@ const LABEL_END = '\uE002'
 const BOLD_MARK = /[\uE000\uE001]/g
 const MARKS = /[\uE000\uE001\uE002]/g
 
-const NGA_HOSTS = ['nga.cn', 'ngabbs.com', 'nga.178.com', 'ngacn.cc']
+interface SiteConfig {
+  /** 來源 URL 的主機（子網域也算），detectSite 依此判斷網站 */
+  hosts: string[]
+  /** 內容區塊 selector；未設定或找不到時依序找 main、article、body（SelectorType 讓 $(content) 的型別是 Element） */
+  content?: SelectorType
+  /** 共用的 NOISE 之外要清掉的雜訊 */
+  noise?: string
+  /** 站方提示框：含 icon 的 box 文字含 text 時整個清掉；只認得這段文字，避免誤刪其他提示框 */
+  notice?: { icon: string, box: string, text: string }
+  /** 頁面標題 selector；未設定時取內容區塊的第一個 h1（並從內容移除） */
+  title?: string
+  /** frontmatter 的 site */
+  siteName: (page: { $: CheerioAPI, html: string, source: string | undefined }) => string | undefined
+}
 
-// 依來源 URL 的主機判斷網站；NGA 的知識庫不 commit（ADR-0007），CLI 依此決定輸出目錄
+// 網站設定：每個網站一組內容區塊 selector 與清理規則，網站改版時只改這裡（ADR-0007）
+const SITES: Record<Site, SiteConfig> = {
+  huiji: {
+    hosts: ['huijiwiki.com'],
+    content: '#mw-content-text > .mw-parser-output',
+    // MediaWiki 的編輯連結、目錄、導覽框、分類、註腳等
+    noise: '.mw-editsection, #toc, .toc, .navbox, .catlinks, .noprint, sup.reference, .references, .mw-references-wrap',
+    // 請登入帳號以修正表格寬度的提示框
+    notice: { icon: 'img[alt^="Stamp"]', box: 'div[style*="border"]', text: '灰机Wiki账户' },
+    title: '#firstHeading h1',
+    siteName: ({ html }) => {
+      const name = html.match(/"wgSiteName":"([^"]*)"/)?.[1]
+      return name ? `灰机wiki（${name}）` : '灰机wiki'
+    },
+  },
+  // NGA 的知識庫不 commit（ADR-0007），CLI 依 detectSite 決定輸出目錄；內容區塊 selector 等有範例 HTML 再加
+  nga: {
+    hosts: ['nga.cn', 'ngabbs.com', 'nga.178.com', 'ngacn.cc'],
+    siteName: () => 'NGA',
+  },
+  // 其他網站：沒有相符的主機時使用
+  generic: {
+    hosts: [],
+    siteName: ({ $, source }) => $('meta[property="og:site_name"]').attr('content')?.trim() || hostOf(source),
+  },
+}
+
+// 依來源 URL 的主機判斷網站
 export function detectSite(html: string): Site {
   const host = hostOf(findSourceUrl(html)) ?? ''
   const match = (h: string): boolean => host === h || host.endsWith(`.${h}`)
-  if (match('huijiwiki.com'))
-    return 'huiji'
-  return NGA_HOSTS.some(match) ? 'nga' : 'generic'
+  return (Object.keys(SITES) as Site[]).find(site => SITES[site].hosts.some(match)) ?? 'generic'
 }
 
 export function convertHtml(html: string, site: Site, meta: ConvertMeta): string {
+  const config = SITES[site]
   const $ = load(html)
   const source = findSourceUrl(html)
-  const root = contentRoot($, site)
-  clean($, root, site)
-  const title = escapeText(pageTitle($, site, root) || meta.name)
+  const root = contentRoot($, config)
+  clean($, root, config)
+  const title = escapeText(pageTitle($, config, root) || meta.name)
   const blocks = renderBlocks(root.contents().toArray(), { $, host: hostOf(source), level: 1, base: 1, bold: false })
   const body = normalizeHeadings(blocks, [{ from: 1, to: 1 }]).map(serialize).join('\n\n')
-  return `${frontmatter($, html, site, source, meta)}\n\n# ${title}\n\n${body}\n`
+  return `${frontmatter($, html, config, source, meta)}\n\n# ${title}\n\n${body}\n`
 }
 
 // 標題依文件順序重新編號：子標題只比父標題深一層、不跳級；超過 6 層改成粗體段落
@@ -92,27 +131,26 @@ function normalizeHeadings(blocks: Block[], stack: { from: number, to: number }[
   })
 }
 
-// 所有網站共用的雜訊；灰機 wiki 另外清掉 MediaWiki 的編輯連結、目錄等
+// 所有網站共用的雜訊；各網站另外的雜訊與站方提示框見 SITES
 const NOISE = 'script, style, noscript, template, link, meta, iframe, svg, canvas, nav, button, input, select, textarea'
-const HUIJI_NOISE = '.mw-editsection, #toc, .toc, .navbox, .catlinks, .noprint, sup.reference, .references, .mw-references-wrap'
 
-function clean($: CheerioAPI, root: Cheerio<Element>, site: Site): void {
+function clean($: CheerioAPI, root: Cheerio<Element>, { noise, notice }: SiteConfig): void {
   root.find(NOISE).remove()
-  if (site !== 'huiji')
+  if (noise)
+    root.find(noise).remove()
+  if (!notice)
     return
-  root.find(HUIJI_NOISE).remove()
-  // 站方提示框（請登入帳號以修正表格寬度），只認得這段文字，避免誤刪其他提示框
-  root.find('img[alt^="Stamp"]').each((_, img) => {
-    const box = $(img).closest('div[style*="border"]')
-    if (box.text().includes('灰机Wiki账户'))
+  root.find(notice.icon).each((_, icon) => {
+    const box = $(icon).closest(notice.box)
+    if (box.text().includes(notice.text))
       box.remove()
   })
 }
 
-// 內容區塊：灰機 wiki 用固定 selector，其他網站依序找 main、article、body
-function contentRoot($: CheerioAPI, site: Site): Cheerio<Element> {
-  if (site === 'huiji') {
-    const root = $('#mw-content-text > .mw-parser-output').first()
+// 內容區塊：網站設定的 selector 優先，找不到時依序找 main、article、body
+function contentRoot($: CheerioAPI, { content }: SiteConfig): Cheerio<Element> {
+  if (content) {
+    const root = $(content).first()
     if (root.length)
       return root
   }
@@ -123,11 +161,11 @@ function contentRoot($: CheerioAPI, site: Site): Cheerio<Element> {
   return article.length ? article : $('body').first()
 }
 
-// 頁面標題：灰機 wiki 取 #firstHeading；其他網站取內容區塊的第一個 h1（並從內容移除），再退回 <title>
-function pageTitle($: CheerioAPI, site: Site, root: Cheerio<Element>): string {
+// 頁面標題：網站設定的 selector；沒有設定時取內容區塊的第一個 h1（並從內容移除）；都沒有時退回 <title>
+function pageTitle($: CheerioAPI, config: SiteConfig, root: Cheerio<Element>): string {
   let title = ''
-  if (site === 'huiji') {
-    title = $('#firstHeading h1').first().text()
+  if (config.title) {
+    title = $(config.title).first().text()
   }
   else {
     const h1 = root.find('h1').first()
@@ -139,10 +177,10 @@ function pageTitle($: CheerioAPI, site: Site, root: Cheerio<Element>): string {
   return title.replace(/\s+/g, ' ').trim()
 }
 
-function frontmatter($: CheerioAPI, html: string, site: Site, source: string | undefined, meta: ConvertMeta): string {
+function frontmatter($: CheerioAPI, html: string, config: SiteConfig, source: string | undefined, meta: ConvertMeta): string {
   const fields: [string, string | undefined][] = [
     ['source', source],
-    ['site', siteName($, html, site, source)],
+    ['site', config.siteName({ $, html, source })],
     ['author', $('meta[name="author"]').attr('content')?.trim()],
     ['fetchedAt', meta.fetchedAt.toISOString().replace(/\.\d+Z$/, 'Z')],
     ['category', meta.category],
@@ -156,16 +194,6 @@ function findSourceUrl(html: string): string | undefined {
   const canonical = html.match(/<link\b[^>]+\brel=["']?canonical[^>]*>/i)?.[0]
   const href = canonical?.match(/\bhref=["']([^"']+)["']/i)?.[1]
   return href ?? html.match(/<!-- saved from url=\(\d+\)(\S+) -->/)?.[1]
-}
-
-function siteName($: CheerioAPI, html: string, site: Site, source: string | undefined): string | undefined {
-  if (site === 'huiji') {
-    const name = html.match(/"wgSiteName":"([^"]*)"/)?.[1]
-    return name ? `灰机wiki（${name}）` : '灰机wiki'
-  }
-  if (site === 'nga')
-    return 'NGA'
-  return $('meta[property="og:site_name"]').attr('content')?.trim() || hostOf(source)
 }
 
 function hostOf(url: string | undefined): string | undefined {

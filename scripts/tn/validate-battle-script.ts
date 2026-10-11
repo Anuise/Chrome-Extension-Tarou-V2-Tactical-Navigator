@@ -1,5 +1,6 @@
 // 戰鬥腳本驗證：npx tsx scripts/tn/validate-battle-script.ts <檔案...>
 import { readFileSync } from 'node:fs'
+// 以相對路徑 import：tsx 只從 cwd 的 tsconfig 讀 ~/ alias，在其他目錄執行會解析失敗；upstream 的 scripts/*.ts 也用相對路徑（例如 ../manifest.json）
 import { validateScript } from '../../src/tn/battle-script/core'
 
 /** 檢查一個檔案，回傳錯誤說明；通過時為空陣列 */

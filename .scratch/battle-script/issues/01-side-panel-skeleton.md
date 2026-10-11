@@ -4,15 +4,15 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-- [ ] 側欄選單出現「戰鬥腳本」頁，透過白名單的側欄掛鉤點註冊，掛鉤點帶 `[TN]` 標記
-- [ ] boss 狀態卡經由 upstream 介面層 import upstream 元件，未複製、未修改任何 upstream view 檔
-- [ ] 戰鬥中頁面顯示 questId 與第幾場；不在戰鬥中時不報錯
-- [ ] 確認 `battleInfo` 是否能取得第幾場（battle count）；取不到時顯示為 1，並在本檔 Comments 記錄查證結果
-- [ ] 「複製目前關卡資訊」複製的 JSON 含 questId、battleCount、boss 名稱、boss buff status 陣列
-- [ ] 側欄頁把 upstream 的 `battleInfo` 轉成 spec 定義的 `BattleSnapshot`（供 03 使用）
-- [ ] `pnpm tc`、`pnpm lint`、`pnpm bp` 通過；`git diff --name-only upstream/main...HEAD` 只含 fork 路徑與白名單檔
+- [x] 側欄選單出現「戰鬥腳本」頁，透過白名單的側欄掛鉤點註冊，掛鉤點帶 `[TN]` 標記
+- [x] boss 狀態卡經由 upstream 介面層 import upstream 元件，未複製、未修改任何 upstream view 檔
+- [x] 戰鬥中頁面顯示 questId 與第幾場；不在戰鬥中時不報錯
+- [x] 確認 `battleInfo` 是否能取得第幾場（battle count）；取不到時顯示為 1，並在本檔 Comments 記錄查證結果
+- [x] 「複製目前關卡資訊」複製的 JSON 含 questId、battleCount、boss 名稱、boss buff status 陣列
+- [x] 側欄頁把 upstream 的 `battleInfo` 轉成 spec 定義的 `BattleSnapshot`（供 03 使用）
+- [x] `pnpm tc`、`pnpm lint`、`pnpm bp` 通過；`git diff --name-only upstream/main...HEAD` 只含 fork 路徑與白名單檔
 - [ ] 手動驗證：實際進一場戰鬥，頁面資訊隨戰鬥更新，複製內容正確
 
 ## Comments
@@ -37,3 +37,9 @@
 ### 「複製目前關卡資訊」的 JSON 格式（05 沿用）
 
 - 欄位依序為 `questId`（字串）、`battleCount`、`bossName`（boss 日文名）、`bossBuffStatuses`（boss buff 與 debuff 的 status 陣列），以 2 個空白縮排，例如 `{ "questId": "305421", "battleCount": 1, "bossName": "…", "bossBuffStatuses": ["4052_1"] }`。
+
+### 收尾
+
+- 已合入 integration 分支 `feat/tn-battle-script`（merge commit `6aff4cc`）；code review 修正於 `a14197e` 合入。
+- lint 以「新增 0 problems」驗收：本功能之前基準就有 291 problems，全在既有檔案（3 份 fork 文件與 upstream 的 `src/styles/ranking.css`）。
+- 尚待使用者：實戰手動驗證（未勾選項）。ticket 03、04 的 implementer 已用 Playwright 載入 `dist/` 並寫入假 `battleInfo` 做過冒煙測試，但不能取代實戰。驗證完成後把 Status 改為 `resolved`。

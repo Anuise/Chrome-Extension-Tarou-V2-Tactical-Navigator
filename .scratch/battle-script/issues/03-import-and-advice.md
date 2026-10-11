@@ -4,17 +4,17 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-- [ ] 戰鬥腳本 schema v1 型別定義在 tn 型別模組
-- [ ] 核心模組不依賴 Vue／chrome API，對外只有 `validateScript` 與 `selectAdvice`
-- [ ] `selectAdvice` 支援全部五種條件：回合（單值或區間）、HP 區間、計量條區間、預兆子字串、boss buff status 前綴；AND 組合；區間含端點且端點順序不限；`when` 為空時恆成立
-- [ ] 腳本相符：questId 相同，且腳本未寫 battleCount 或 battleCount 相同
-- [ ] 成立的規則依腳本順序列出；不記錄觸發狀態
-- [ ] 腳本存在 `tn:battle-scripts`，不寫入任何 upstream storage key
-- [ ] 側欄頁可匯入單一 JSON，驗證失敗時顯示錯誤並拒絕
-- [ ] `node:test` 測試涵蓋 `validateScript`（合法、缺欄位、型別錯、版本不支援、區間格式錯，errors 指出規則索引與欄位路徑）與 `selectAdvice`（各條件成立／不成立、端點、AND、順序、無相符、snapshot 欄位缺失不拋錯）
-- [ ] `pnpm tc`、`pnpm lint`、`pnpm bp` 通過
+- [x] 戰鬥腳本 schema v1 型別定義在 tn 型別模組
+- [x] 核心模組不依賴 Vue／chrome API，對外只有 `validateScript` 與 `selectAdvice`
+- [x] `selectAdvice` 支援全部五種條件：回合（單值或區間）、HP 區間、計量條區間、預兆子字串、boss buff status 前綴；AND 組合；區間含端點且端點順序不限；`when` 為空時恆成立
+- [x] 腳本相符：questId 相同，且腳本未寫 battleCount 或 battleCount 相同
+- [x] 成立的規則依腳本順序列出；不記錄觸發狀態
+- [x] 腳本存在 `tn:battle-scripts`，不寫入任何 upstream storage key
+- [x] 側欄頁可匯入單一 JSON，驗證失敗時顯示錯誤並拒絕
+- [x] `node:test` 測試涵蓋 `validateScript`（合法、缺欄位、型別錯、版本不支援、區間格式錯，errors 指出規則索引與欄位路徑）與 `selectAdvice`（各條件成立／不成立、端點、AND、順序、無相符、snapshot 欄位缺失不拋錯）
+- [x] `pnpm tc`、`pnpm lint`、`pnpm bp` 通過
 - [ ] 手動驗證：匯入一份手寫測試腳本，實戰中建議隨回合／HP 變化
 
 ## Comments
@@ -70,3 +70,9 @@
   - 驗證失敗與非 JSON 檔都會列出錯誤，且不寫入。
   - 不在戰鬥中時仍可匯入。
 - 實戰手動驗證尚未進行，需要使用者在遊戲中完成。
+
+### 收尾
+
+- 已合入 integration 分支 `feat/tn-battle-script`（merge commit `9041a4a`）；code review 修正於 `a14197e` 合入。
+- lint 以「新增 0 problems」驗收：本功能之前基準就有 291 problems，全在既有檔案（3 份 fork 文件與 upstream 的 `src/styles/ranking.css`）。
+- 尚待使用者：實戰手動驗證（未勾選項）。驗證完成後把 Status 改為 `resolved`。

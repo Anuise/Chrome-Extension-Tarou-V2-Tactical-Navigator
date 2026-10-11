@@ -4,14 +4,14 @@
 
 **Blocked by:** 02, 03
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] skill 放在 repo 的 Claude skill 目錄，名稱 `tn-battle-script`，內容為繁體中文
-- [ ] 提供驗證 CLI（`npx tsx` 執行），呼叫核心模組的 `validateScript`，輸出錯誤位置；skill 寫檔前必須通過
-- [ ] skill 流程涵蓋：執行轉譯 → 讀 boss 知識庫與攻略 → 接受側欄頁複製的關卡資訊 → 詢問出戰名單與打法 → 查技能名 → 依神意分別產出 → 驗證 → 寫入 `battle-scripts/<questId>-<名稱>.json`
-- [ ] skill 能讀既有腳本並依回饋修改
-- [ ] 缺少所需知識庫時，skill 指出要存哪一類、哪一頁
-- [ ] 以一段範例對話試跑，產出的檔案通過驗證 CLI
+- [x] skill 放在 repo 的 Claude skill 目錄，名稱 `tn-battle-script`，內容為繁體中文
+- [x] 提供驗證 CLI（`npx tsx` 執行），呼叫核心模組的 `validateScript`，輸出錯誤位置；skill 寫檔前必須通過
+- [x] skill 流程涵蓋：執行轉譯 → 讀 boss 知識庫與攻略 → 接受側欄頁複製的關卡資訊 → 詢問出戰名單與打法 → 查技能名 → 依神意分別產出 → 驗證 → 寫入 `battle-scripts/<questId>-<名稱>.json`
+- [x] skill 能讀既有腳本並依回饋修改
+- [x] 缺少所需知識庫時，skill 指出要存哪一類、哪一頁
+- [x] 以一段範例對話試跑，產出的檔案通過驗證 CLI
 
 ## Comments
 
@@ -87,3 +87,8 @@
 - `pnpm tc`、`pnpm bp` 通過。
 - `CI=1 pnpm lint` 共 291 problems，與基準相同；新增與修改的檔案都是 0 error、0 warning（`.claude/**` 不在 lint 範圍內）。
 - `git diff --name-only upstream/main...HEAD` 只含 fork 路徑與白名單檔。
+
+### 收尾
+
+- 已合入 integration 分支 `feat/tn-battle-script`（merge commit `b774452`）；code review 修正於 `a14197e` 合入。修正後 skill 用詞改為「操作建議」，並規定灰機 wiki 與 NGA 以外的攻略在轉譯前先問作者。
+- skill 與腳本的實戰驗收屬於 ticket 06。

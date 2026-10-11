@@ -47,8 +47,9 @@ function isRange(value: unknown): value is BattleScriptRange {
   return Array.isArray(value) && value.length === 2 && value.every(isNumber)
 }
 
-const TEXT = '必須是非空字串'
-const RANGE = '必須是兩個數字的區間，例如 [15, 50]'
+// validateScript 共用的錯誤說明
+const INVALID_TEXT_MESSAGE = '必須是非空字串'
+const INVALID_RANGE_MESSAGE = '必須是兩個數字的區間，例如 [15, 50]'
 
 /** 驗證匯入的戰鬥腳本是否符合 schema version 1；不符合時一次回報所有錯誤 */
 export function validateScript(input: unknown): ValidateScriptResult {
@@ -89,22 +90,22 @@ export function validateScript(input: unknown): ValidateScriptResult {
     const keys = isRecord(item) && item.text !== undefined ? ['text'] : ['character', 'skill']
     if (checkObject(item, path, keys)) {
       for (const key of keys)
-        checkField(item, path, key, isText, TEXT)
+        checkField(item, path, key, isText, INVALID_TEXT_MESSAGE)
     }
   }
 
   const checkRule = (rule: unknown, path: string) => {
     if (!checkObject(rule, path, ['note', 'when', 'advice']))
       return
-    checkField(rule, path, 'note', isText, TEXT)
+    checkField(rule, path, 'note', isText, INVALID_TEXT_MESSAGE)
     const whenPath = `${path}.when`
     if (rule.when !== undefined && checkObject(rule.when, whenPath, ['turn', 'hp', 'gauge', 'omen', 'bossBuff'], [])) {
       checkField(rule.when, whenPath, 'turn', value => isNumber(value) || isRange(value), '必須是數字或兩個數字的區間，例如 3 或 [1, 3]')
-      checkField(rule.when, whenPath, 'hp', isRange, RANGE)
-      checkField(rule.when, whenPath, 'gauge', isRange, RANGE)
+      checkField(rule.when, whenPath, 'hp', isRange, INVALID_RANGE_MESSAGE)
+      checkField(rule.when, whenPath, 'gauge', isRange, INVALID_RANGE_MESSAGE)
       // 空字串會讓子字串與前綴比對恆成立
-      checkField(rule.when, whenPath, 'omen', isText, TEXT)
-      checkField(rule.when, whenPath, 'bossBuff', isText, TEXT)
+      checkField(rule.when, whenPath, 'omen', isText, INVALID_TEXT_MESSAGE)
+      checkField(rule.when, whenPath, 'bossBuff', isText, INVALID_TEXT_MESSAGE)
     }
     checkField(rule, path, 'advice', Array.isArray, '必須是陣列')
     if (Array.isArray(rule.advice))
@@ -116,8 +117,8 @@ export function validateScript(input: unknown): ValidateScriptResult {
     report('version', `不支援的版本 ${JSON.stringify(input.version)}，只支援 1`)
   }
   else if (checkObject(input, '', ['version', 'name', 'questId', 'battleCount', 'party', 'rules'], ['version', 'name', 'questId', 'rules'])) {
-    checkField(input, '', 'name', isText, TEXT)
-    checkField(input, '', 'questId', isText, TEXT)
+    checkField(input, '', 'name', isText, INVALID_TEXT_MESSAGE)
+    checkField(input, '', 'questId', isText, INVALID_TEXT_MESSAGE)
     checkField(input, '', 'battleCount', value => Number.isInteger(value) && (value as number) >= 1, '必須是正整數')
     if (input.party !== undefined && checkObject(input.party, 'party', ['characters', 'summons'])) {
       checkField(input.party, 'party', 'characters', isTextList, '必須是由非空字串組成的陣列')

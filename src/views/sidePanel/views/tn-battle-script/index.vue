@@ -76,7 +76,7 @@ function handleRemove(script: BattleScript) {
         <template v-if="inBattle">
           <BossCard />
           <el-descriptions w-300px size="small" :column="2" border>
-            <el-descriptions-item label="questId" align="center">
+            <el-descriptions-item label="關卡" align="center">
               {{ snapshot.questId }}
             </el-descriptions-item>
             <el-descriptions-item label="第幾場" align="center">

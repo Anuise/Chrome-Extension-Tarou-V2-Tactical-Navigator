@@ -60,4 +60,14 @@ describe('toBattleSnapshot', () => {
 
     assert.equal(toBattleSnapshot({ ...inBattle, bossInfo }).questId, '305421')
   })
+
+  it('舊版存下的 bossInfo 沒有 addition 時不拋錯，計量條為 undefined', () => {
+    const { addition: _, ...bossInfo } = inBattle.bossInfo!
+
+    assert.equal(toBattleSnapshot({ ...inBattle, bossInfo: bossInfo as BattleInfo['bossInfo'] }).gauge, undefined)
+  })
+
+  it('舊版存下的 buffInfo 沒有 bossBuffs 時不拋錯，boss buff 為空陣列', () => {
+    assert.deepEqual(toBattleSnapshot({ ...inBattle, buffInfo: {} as BattleInfo['buffInfo'] }).bossBuffStatuses, [])
+  })
 })

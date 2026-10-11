@@ -34,6 +34,10 @@
 | 訊息協定 | `types/tn-shim.d.ts`：頂層要有 `import type ... from 'webext-bridge'`，才會與 `types/shim.d.ts` 合併 |
 | 腳本 | `scripts/tn/` |
 | 文件 | `CLAUDE.md`、`CONTEXT.md`、`docs/`、`.scratch/` |
+| Claude skill | `.claude/skills/` |
+| 戰鬥腳本 | `battle-scripts/` |
+| 知識庫 | `knowledge/`（NGA 來源的 `knowledge/guide/nga/` 不 commit，見 [ADR-0007](../adr/0007-reference-local-knowledge-committed.md)） |
+| 參考資料 | `reference/`（只留本機，以 `.git/info/exclude` 排除，見 ADR-0007） |
 
 命名一律用 `tn` 前綴（[ADR-0002](../adr/0002-tn-namespace.md)）：
 
@@ -100,6 +104,7 @@
 
 - `src/tn/core/upstream.ts` 是唯一 import upstream 模組的 tn 檔案，其他 tn 檔一律從它取用。upstream 改名或搬檔時只需改這一個檔。
 - `upstream.ts` 不轉出 `~/api`。
+- upstream 的 view 元件（`src/views/**`、`src/components/**`）也經由 `upstream.ts` 取用，只引用、不複製、不修改。見 [ADR-0008](../adr/0008-reuse-upstream-view-components.md)。
 
 ## 7. 同步 upstream
 

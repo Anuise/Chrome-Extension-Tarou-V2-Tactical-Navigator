@@ -2,6 +2,7 @@
 import { Icon } from '@iconify/vue'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { eventList, obTabId } from '~/logic'
+import { tnViewList } from '~/tn/core/views' // [TN]
 
 const componentMap: Record<string, Component> = (() => {
   const modules = import.meta.glob('./views/*/index.vue')
@@ -36,6 +37,7 @@ const upViewList = computed(() => [
 ].filter(m => !m.hidden))
 
 const downViewList = [
+  ...tnViewList, // [TN]
   { key: 'info', label: '用户信息', icon: 'carbon:information-filled' },
   { key: 'setting', label: '设置', icon: 'carbon:settings' },
 ]

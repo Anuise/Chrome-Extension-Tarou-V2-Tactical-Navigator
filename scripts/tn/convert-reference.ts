@@ -93,4 +93,8 @@ for (const category of existsSync(referenceDir) ? readdirSync(referenceDir, { wi
   }
 }
 
-console.log(`完成：轉譯 ${converted} 個，跳過 ${skipped} 個（來源未變）`)
+// 什麼都沒轉譯也沒跳過時不印「來源未變」，改列出掃描的目錄：例如 git worktree 裡沒有只留在本機的 reference/
+if (converted + skipped === 0)
+  console.log(`完成：沒有找到任何可轉譯的參考資料（掃描的目錄：${referenceDir}）`)
+else
+  console.log(`完成：轉譯 ${converted} 個，跳過 ${skipped} 個（來源未變）`)

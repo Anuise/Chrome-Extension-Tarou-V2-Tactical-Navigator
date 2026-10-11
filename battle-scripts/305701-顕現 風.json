@@ -1,0 +1,410 @@
+{
+  "version": 1,
+  "name": "顕現 風",
+  "questId": "305701",
+  "party": {
+    "characters": [
+      "主",
+      "七",
+      "玉米",
+      "牛",
+      "皇帝"
+    ],
+    "summons": [
+      "風太陽",
+      "神盾",
+      "000"
+    ]
+  },
+  "rules": [
+    {
+      "note": "第 1 回合：開幕",
+      "when": {
+        "turn": 1
+      },
+      "advice": [
+        {
+          "character": "主",
+          "skill": "2"
+        },
+        {
+          "character": "主",
+          "skill": "3"
+        },
+        {
+          "character": "七",
+          "skill": "2 インフィニート・クレアーレ"
+        },
+        {
+          "character": "玉米",
+          "skill": "2 ライトセイヴィアー"
+        },
+        {
+          "character": "玉米",
+          "skill": "3 レフトセイヴィアー"
+        },
+        {
+          "character": "玉米",
+          "skill": "1 コンティニュウム"
+        },
+        {
+          "character": "玉米",
+          "skill": "4 モイストプロテクション"
+        },
+        {
+          "character": "玉米",
+          "skill": "2 ライトセイヴィアー"
+        },
+        {
+          "character": "玉米",
+          "skill": "3 レフトセイヴィアー"
+        },
+        {
+          "character": "牛",
+          "skill": "1 舐犢之愛"
+        },
+        {
+          "character": "牛",
+          "skill": "2 金石糸竹"
+        },
+        {
+          "character": "牛",
+          "skill": "4 祝福之鬨"
+        },
+        {
+          "text": "奧義 ON"
+        }
+      ]
+    },
+    {
+      "note": "第 2 回合",
+      "when": {
+        "turn": 2
+      },
+      "advice": [
+        {
+          "character": "主",
+          "skill": "1"
+        },
+        {
+          "character": "皇帝",
+          "skill": "1 雌伏の第一楽章"
+        },
+        {
+          "character": "皇帝",
+          "skill": "4 即位の最終楽章"
+        },
+        {
+          "character": "牛",
+          "skill": "2 金石糸竹"
+        },
+        {
+          "text": "召喚：風太陽"
+        },
+        {
+          "text": "奧義 ON"
+        }
+      ]
+    },
+    {
+      "note": "第 3 回合",
+      "when": {
+        "turn": 3
+      },
+      "advice": [
+        {
+          "text": "FC"
+        },
+        {
+          "character": "牛",
+          "skill": "1 舐犢之愛"
+        },
+        {
+          "text": "奧義 ON"
+        }
+      ]
+    },
+    {
+      "note": "第 4 回合",
+      "when": {
+        "turn": 4
+      },
+      "advice": [
+        {
+          "text": "等 HP 90%"
+        },
+        {
+          "text": "召喚：000"
+        },
+        {
+          "character": "皇帝",
+          "skill": "2 侵攻の第二楽章"
+        },
+        {
+          "character": "牛",
+          "skill": "4 祝福之鬨"
+        },
+        {
+          "text": "奧義 ON"
+        }
+      ]
+    },
+    {
+      "note": "第 5 回合：90% 其 1 身光：1 億傷害",
+      "when": {
+        "turn": 5
+      },
+      "advice": [
+        {
+          "text": "蹲主角"
+        },
+        {
+          "text": "FC"
+        },
+        {
+          "character": "牛",
+          "skill": "1 舐犢之愛"
+        },
+        {
+          "character": "牛",
+          "skill": "2 金石糸竹"
+        },
+        {
+          "text": "奧義 ON"
+        }
+      ]
+    },
+    {
+      "note": "第 6 回合：90% 其 2 輪廻：6 次奧義",
+      "when": {
+        "turn": 6
+      },
+      "advice": [
+        {
+          "text": "直接A"
+        },
+        {
+          "text": "奧義 ON"
+        }
+      ]
+    },
+    {
+      "note": "第 7 回合：90% 其 3 黄泉：FC",
+      "when": {
+        "turn": 7
+      },
+      "advice": [
+        {
+          "text": "綠藥 > 牛"
+        },
+        {
+          "text": "FC"
+        },
+        {
+          "character": "牛",
+          "skill": "1 舐犢之愛"
+        },
+        {
+          "character": "牛",
+          "skill": "2 金石糸竹"
+        },
+        {
+          "character": "牛",
+          "skill": "4 祝福之鬨"
+        },
+        {
+          "character": "七",
+          "skill": "2 インフィニート・クレアーレ"
+        },
+        {
+          "text": "奧義 ON"
+        }
+      ]
+    },
+    {
+      "note": "第 8 回合",
+      "when": {
+        "turn": 8
+      },
+      "advice": [
+        {
+          "text": "等 HP 70%"
+        },
+        {
+          "text": "FC"
+        },
+        {
+          "character": "主",
+          "skill": "4"
+        },
+        {
+          "text": "奧義 ON"
+        }
+      ]
+    },
+    {
+      "note": "第 9 回合：70% 特動 1：7 次技能",
+      "when": {
+        "turn": 9
+      },
+      "advice": [
+        {
+          "character": "主",
+          "skill": "1"
+        },
+        {
+          "character": "主",
+          "skill": "2"
+        },
+        {
+          "character": "主",
+          "skill": "3"
+        },
+        {
+          "character": "七",
+          "skill": "1 エンブレーマ"
+        },
+        {
+          "character": "皇帝",
+          "skill": "1 雌伏の第一楽章"
+        },
+        {
+          "character": "皇帝",
+          "skill": "1 雌伏の第一楽章"
+        },
+        {
+          "character": "牛",
+          "skill": "1 舐犢之愛"
+        },
+        {
+          "character": "牛",
+          "skill": "2 金石糸竹"
+        },
+        {
+          "text": "奧義 ON"
+        }
+      ]
+    },
+    {
+      "note": "第 10 回合：70% 特動 2",
+      "when": {
+        "turn": 10
+      },
+      "advice": [
+        {
+          "text": "FC"
+        },
+        {
+          "text": "奧義 ON"
+        }
+      ]
+    },
+    {
+      "note": "第 11 回合：70% 特動 3",
+      "when": {
+        "turn": 11
+      },
+      "advice": [
+        {
+          "text": "等 G50"
+        },
+        {
+          "text": "召喚：000"
+        },
+        {
+          "text": "奧義 ON"
+        }
+      ]
+    },
+    {
+      "note": "G50：浄土預兆（進入第二階段前）",
+      "when": {
+        "gauge": [
+          50,
+          100
+        ]
+      },
+      "advice": [
+        {
+          "text": "召喚：神盾"
+        },
+        {
+          "text": "FC"
+        },
+        {
+          "text": "hi"
+        }
+      ]
+    },
+    {
+      "note": "第二階段：四王天",
+      "when": {
+        "bossBuff": "3353_"
+      },
+      "advice": [
+        {
+          "text": "解四天王：5 回攻擊行動（每級 +1）"
+        },
+        {
+          "text": "hi"
+        }
+      ]
+    },
+    {
+      "note": "第二階段：忉利天",
+      "when": {
+        "bossBuff": "3354_"
+      },
+      "advice": [
+        {
+          "text": "解四天王：4 次奧義（每級 +1）"
+        },
+        {
+          "text": "hi"
+        }
+      ]
+    },
+    {
+      "note": "第二階段：夜摩天",
+      "when": {
+        "bossBuff": "3355_"
+      },
+      "advice": [
+        {
+          "text": "解四天王：3000 萬技能傷害（每級 +500 萬）"
+        },
+        {
+          "text": "hi"
+        }
+      ]
+    },
+    {
+      "note": "第二階段：兜率天",
+      "when": {
+        "bossBuff": "3356_"
+      },
+      "advice": [
+        {
+          "text": "解四天王：3 次 TA（每級 +1）"
+        },
+        {
+          "text": "hi"
+        }
+      ]
+    },
+    {
+      "note": "第二階段：化楽天",
+      "when": {
+        "bossBuff": "3357_"
+      },
+      "advice": [
+        {
+          "text": "解四天王：40 次傷害（每級 +20）"
+        },
+        {
+          "text": "hi"
+        }
+      ]
+    }
+  ]
+}

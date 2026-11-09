@@ -18,7 +18,9 @@ export function exportBattleRecord(records: readonly unknown[], now: Date): Scri
  * 和 upstream 一樣用 find 找目前這場：回到已有紀錄的戰鬥時，upstream 不會把它移到最前面。
  * 只能盡力而為，boss HP 不一定反映戰鬥有沒有結束：
  * - 全滅、撤退，以及多人戰由別人擊倒卻沒收到 battleFinish 時，HP 仍大於 0，會被當成還在打
- * - 多隻敵人時，upstream 擊倒任何一隻都會把 HP 設成 0，下次更新 HP 之前不會被當成還在打
+ * - 多隻敵人時，upstream 擊倒任何一隻都會把 HP 設成 0，要等 0 號位的 HP 再更新才會改回來；
+ *   0 號位先倒下時，可能整場剩下的回合都不會被當成還在打
+ * 改這裡的判斷或上面的說明時，要同步改 07 票（.scratch/battle-script/issues/07-export-battle-record.md）的「戰鬥中匯出的判斷」
  */
 export function findOngoingRecord<T extends { raid_id: number }>(records: readonly T[], battleInfo: Partial<BattleInfo>): T | undefined {
   // battleInfo 是 storage 裡的資料：剛安裝時為空物件，沒有 bossInfo；舊資料可能沒有 hp

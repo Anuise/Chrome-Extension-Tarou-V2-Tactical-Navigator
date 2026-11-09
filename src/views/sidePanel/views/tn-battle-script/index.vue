@@ -5,7 +5,7 @@ import type { ImportResult, ScriptFile } from '~/tn/battle-script/manage'
 import { useFileDialog } from '@vueuse/core'
 import copy from 'copy-text-to-clipboard'
 import { ElMessage } from 'element-plus'
-import { computed, ref, watch } from 'vue'
+import { computed, onDeactivated, ref, watch } from 'vue'
 import { selectAdvice } from '~/tn/battle-script/core'
 import { exportScript, importScripts, removeScript } from '~/tn/battle-script/manage'
 import { exportBattleRecord, findOngoingRecord } from '~/tn/battle-script/record'
@@ -22,10 +22,20 @@ const selection = computed(() => selectAdvice(battleScripts.value.filter(s => s.
 // 戰鬥資料戰後不清除，幾乎一直「在戰鬥中」，所以腳本管理放在獨立分頁，戰前整理不用捲過 boss 狀態卡與建議區。
 // 不在戰鬥中（剛安裝）時預設顯示腳本管理；進入新的一場戰鬥時自動切到目前戰鬥
 const tab = ref(inBattle.value ? 'battle' : 'manage')
+
+/**
+ * 目前這場可能還沒打完時的 warning：不會自動消失，下次匯出前先關掉，畫面上只留最新一則。
+ * warning 掛在 body 上，換了一場或切到別的側欄頁時內容已經過時，也要關掉
+ */
+let ongoingWarning: MessageHandler | undefined
+
 watch(() => battleInfo.value.bossInfo?.battleId, (battleId) => {
+  ongoingWarning?.close()
   if (battleId)
     tab.value = 'battle'
 })
+// 側欄各頁包在 keep-alive 裡，切到別的側欄頁時元件只會 deactivate，不會卸載
+onDeactivated(() => ongoingWarning?.close())
 
 function handleCopyQuestInfo() {
   const { questId, battleCount, bossBuffStatuses } = snapshot.value
@@ -70,9 +80,6 @@ function handleExport(script: BattleScript) {
   download(exportScript(script))
 }
 
-/** 目前這場可能還沒打完時的 warning：不會自動消失，下次匯出前先關掉，畫面上只留最新一則 */
-let ongoingWarning: MessageHandler | undefined
-
 /** 匯出 upstream 的 battleRecord（最近 10 場）全部場次，只讀不寫 */
 function handleExportRecord() {
   ongoingWarning?.close()
@@ -82,7 +89,7 @@ function handleExportRecord() {
     return
   }
   download(exportBattleRecord(records, new Date()))
-  // 目前這場可能還沒打完時照樣下載，但提醒紀錄只到進行中的回合；tn 分不出全滅、撤退和還在打，兩種情況都要寫
+  // 目前這場可能還沒打完時照樣下載，但提醒紀錄只到進行中的回合；tn 分不出這場已經結束（全滅、撤退）還是還在打，兩種情況都要寫
   const ongoing = findOngoingRecord(records, battleInfo.value)
   if (ongoing)
     ongoingWarning = ElMessage.warning({ message: `已匯出最近 ${records.length} 場。目前這場可能還沒打完：如果還在打，紀錄只到進行中的第 ${ongoing.turn} 回合，打完後再匯出一次；如果這場已經結束（包括全滅、撤退），紀錄就是完整的`, duration: 0, showClose: true })

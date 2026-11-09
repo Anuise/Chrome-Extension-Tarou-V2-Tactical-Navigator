@@ -43,6 +43,8 @@ export function dispatchParcel(parcel: unknown, handlers: TnHandler[]): void {
 // 後續票各在這裡加一個 import 和一個項目
 // handler 不可修改傳入的 parcel：同一個物件會交給每個 handler，錄製器會延後寫入
 // 每個 AJAX 回應（不只戰鬥）都會呼叫每個 handler，請先用 URL 過濾，同步部分要快
+// 目前成立的前提：upstream 的 unpack 裡沒有 await，所以 handler 被呼叫時，background 記憶體中的 upstream ref
+// 已經反映這筆回應，但 storage 還沒寫入；upstream 之後在 unpack 加了 await，要重新確認
 const handlers: TnHandler[] = [
   recordParcel,
 ]
@@ -53,15 +55,13 @@ export function tnUnpack(parcel: unknown): void {
 }
 
 // 後續票各在這裡加一個 import 和一個項目
+// setup 的 try/catch 只接得住註冊當下的錯誤；監聽 callback 之後才丟的錯要自己接，參考 setupRecorderWebSocket
 const setups: (() => void)[] = [
   setupRecorderWebSocket,
 ]
 
-/**
- * tn 的 Chrome 原生事件監聽（`chrome.webRequest`、`chrome.contextMenus` 等）都放這裡（RULES §3）。
- * 每個 setup 都要同步註冊監聽，不可 await；丟錯只會印 log，不影響 upstream 與其他 setup
- */
-export function setupTnBackground(): void {
+/** 依序執行每個 setup；一個丟錯只印 log，其他照常執行，絕不往外丟錯 */
+export function runSetups(setups: (() => void)[]): void {
   for (const setup of setups) {
     try {
       setup()
@@ -70,4 +70,12 @@ export function setupTnBackground(): void {
       console.error('[tn] setup 執行失敗', error)
     }
   }
+}
+
+/**
+ * tn 的 Chrome 原生事件監聽（`chrome.webRequest`、`chrome.contextMenus` 等）都放這裡（RULES §3）。
+ * 每個 setup 都要同步註冊監聽，不可 await；丟錯只會印 log，不影響 upstream 與其他 setup
+ */
+export function setupTnBackground(): void {
+  runSetups(setups)
 }

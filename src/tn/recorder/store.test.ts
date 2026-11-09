@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { after, afterEach, before, beforeEach, describe, it, mock } from 'node:test'
 import { StorageSerializers } from '@vueuse/core'
+import { setupTnBackground, tnUnpack } from '../core/dispatch'
 import { REC_ENABLED_KEY, REC_INDEX_KEY, REC_LIMITS } from './core'
 import { clearRecordings, loadRecords, recordParcel, setupRecorderWebSocket } from './store'
 
@@ -243,5 +244,20 @@ describe('clearRecordings', () => {
     data.set('tn:battle-scripts', '[]')
     await clearRecordings()
     assert.deepEqual([...data.keys()].sort(), ['battleRecord', REC_ENABLED_KEY, 'tn:battle-scripts'].sort())
+  })
+})
+
+describe('接線（dispatch.ts 的 handlers 與 setups）', () => {
+  it('tnUnpack 會把戰鬥回應交給錄製器：recordParcel 在 handlers 裡', async () => {
+    enable()
+    tnUnpack(JSON.stringify(parcel))
+    await flush()
+    assert.ok(data.has('tn:rec:11111111:0'))
+  })
+
+  it('setupTnBackground 會註冊 WebSocket 監聽：setupRecorderWebSocket 在 setups 裡', () => {
+    const before = debuggerListeners.length
+    setupTnBackground()
+    assert.equal(debuggerListeners.length, before + 1)
   })
 })

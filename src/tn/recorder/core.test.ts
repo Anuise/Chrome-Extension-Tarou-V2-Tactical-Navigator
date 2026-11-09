@@ -26,10 +26,6 @@ describe('resolveRaidId', () => {
     assert.deepEqual(resolveRaidId(record), { raidId: '11111111', source: 'request' })
   })
 
-  it('requestData 已經是物件時也讀得到', () => {
-    assert.deepEqual(resolveRaidId({ t: 0, url: '/rest/raid/x', requestData: { raid_id: '11111111' } }), { raidId: '11111111', source: 'request' })
-  })
-
   it('requestData 沒有 raid_id、不是 JSON 或不是物件時，改取 responseData 的 raid_id', () => {
     for (const requestData of [undefined, '{"a":1}', 'a=1&b=2', '123', '[1]'])
       assert.deepEqual(resolveRaidId({ t: 0, url: '/rest/raid/start.json', requestData, responseData: { raid_id: 33333333 } }), { raidId: '33333333', source: 'response' }, String(requestData))
@@ -55,8 +51,28 @@ describe('resolveRaidId', () => {
 })
 
 describe('raidIdOf', () => {
-  it('紀錄本身判斷得出來時用它，即使索引裡沒有這場', () => {
-    assert.equal(raidIdOf({ t: 0, url: '/rest/raid/x', requestData: '{"raid_id":99999999}' }, [entry('1', { lastAt: 5 })]), '99999999')
+  it('request、response 的 raid_id 可以建立新的一場：索引裡沒有這場也採用', () => {
+    const index = [entry('1', { lastAt: 5 })]
+    assert.equal(raidIdOf({ t: 0, url: '/rest/raid/x', requestData: '{"raid_id":99999999}' }, index), '99999999')
+    assert.equal(raidIdOf({ t: 0, url: '/rest/raid/start.json', responseData: { raid_id: 88888888 } }, index), '88888888')
+  })
+
+  it('URL 路徑的數字對得到索引裡的場次時歸到那一場，即使它不是最近一場', () => {
+    const index = [entry('44444444', { lastAt: 1 }), entry('2', { lastAt: 9 })]
+    assert.equal(raidIdOf({ t: 0, url: '/rest/multiraid/condition/44444444/1/0.json' }, index), '44444444')
+  })
+
+  it('URL 路徑的數字對不到索引裡的場次時歸到最近一場，不建新場，也不擠掉別場', () => {
+    const limits: RecLimits = { maxRaids: 3, maxBytes: 100 }
+    const index = [entry('1', { lastAt: 1 }), entry('2', { lastAt: 2 }), entry('3', { lastAt: 9 })]
+    const record: RecRecord = { t: 10, url: '/rest/raid/something/3040001000.json' }
+    const raidId = raidIdOf(record, index)
+    assert.equal(raidId, '3')
+    const plan = planAppend(index, { raidId: '3', bytes: 1, now: 10 }, limits)
+    assert.deepEqual(plan.index.map(e => e.raidId), ['1', '2', '3'])
+    assert.deepEqual(plan.removed, [])
+    // 索引是空的時不錄
+    assert.equal(raidIdOf(record, []), undefined)
   })
 
   it('判斷不出來時歸到最後收到資料的那一場，不是最後開始的那一場', () => {
@@ -103,24 +119,37 @@ describe('planAppend', () => {
     assert.equal(second.index[1].questId, 'A')
   })
 
-  it('超過場數上限時刪最舊的一場', () => {
-    const index = [entry('1'), entry('2'), entry('3')]
+  it('超過場數上限時刪 lastAt 最小（最久沒收到資料）的一場', () => {
+    const index = [entry('1', { lastAt: 1 }), entry('2', { lastAt: 2 }), entry('3', { lastAt: 3 })]
     const plan = planAppend(index, { raidId: '4', bytes: 1, now: 9 }, limits)
     assert.deepEqual(plan.index.map(e => e.raidId), ['2', '3', '4'])
     assert.deepEqual(plan.removed.map(e => e.raidId), ['1'])
   })
 
-  it('超過總量上限時由最舊的開始刪，刪到不超過為止，不刪正在錄的這一場', () => {
-    const index = [entry('1', { bytes: 30 }), entry('2', { bytes: 30 }), entry('3', { bytes: 30 })]
-    // 3 號是最新的一場；加 35 後總量 125，刪 1 號剩 95
+  it('回頭打的那一場不會先被刪：刪的是最久沒收到資料的，不是最早開始的', () => {
+    // 1 號最早開始，但剛回頭打過，lastAt 最大
+    const index = [entry('1', { startedAt: 1, lastAt: 8 }), entry('2', { startedAt: 2, lastAt: 3 }), entry('3', { startedAt: 3, lastAt: 5 })]
+    const plan = planAppend(index, { raidId: '4', bytes: 1, now: 9 }, limits)
+    assert.deepEqual(plan.removed.map(e => e.raidId), ['2'])
+    assert.deepEqual(plan.index.map(e => e.raidId), ['1', '3', '4'])
+  })
+
+  it('lastAt 相同時先刪索引裡排前面（較早開始）的', () => {
+    const plan = planAppend([entry('1'), entry('2'), entry('3')], { raidId: '4', bytes: 1, now: 9 }, limits)
+    assert.deepEqual(plan.removed.map(e => e.raidId), ['1'])
+  })
+
+  it('超過總量上限時由 lastAt 最小的開始刪，刪到不超過為止，不刪正在錄的這一場', () => {
+    const index = [entry('1', { bytes: 30, lastAt: 1 }), entry('2', { bytes: 30, lastAt: 2 }), entry('3', { bytes: 30, lastAt: 3 })]
+    // 3 號加 35 後總量 125，刪 1 號剩 95
     const plan = planAppend(index, { raidId: '3', bytes: 35, now: 9 }, limits)
     assert.deepEqual(plan.removed.map(e => e.raidId), ['1'])
     assert.deepEqual(plan.index.map(e => e.raidId), ['2', '3'])
-    // 正在錄的是最舊的 1 號：它不刪，改刪 2 號、3 號
-    const older = planAppend(index, { raidId: '1', bytes: 65, now: 9 }, limits)
-    assert.deepEqual(older.removed.map(e => e.raidId), ['2', '3'])
-    assert.deepEqual(older.index.map(e => e.raidId), ['1'])
-    assert.equal(older.index[0].bytes, 95)
+    // 正在錄的是 lastAt 最小的 1 號：它不刪，改刪 2 號、3 號
+    const stalest = planAppend(index, { raidId: '1', bytes: 65, now: 9 }, limits)
+    assert.deepEqual(stalest.removed.map(e => e.raidId), ['2', '3'])
+    assert.deepEqual(stalest.index.map(e => e.raidId), ['1'])
+    assert.equal(stalest.index[0].bytes, 95)
   })
 
   it('剛好等於總量上限時不刪', () => {
@@ -145,7 +174,7 @@ describe('planAppend', () => {
     assert.deepEqual(plan.index, [{ ...index[0], lastAt: 9 }])
   })
 
-  it('新的一場第一筆就超過上限時，仍建立索引並標記截斷，場數超過上限照樣刪最舊的', () => {
+  it('新的一場第一筆就超過上限時，仍建立索引並標記截斷，場數超過上限照樣刪一場', () => {
     const plan = planAppend([entry('1'), entry('2'), entry('3')], { raidId: '4', bytes: 101, now: 9 }, limits)
     assert.equal(plan.key, undefined)
     assert.deepEqual(plan.index.map(e => [e.raidId, e.count, e.truncated]), [['2', 1, false], ['3', 1, false], ['4', 0, true]])
@@ -161,14 +190,13 @@ describe('entryKeys', () => {
 })
 
 describe('遮罩', () => {
-  it('maskValue 深層走訪物件與陣列，只遮 user_id、viewer_id、nickname，不修改傳入的值', () => {
+  it('maskValue 深層走訪物件與陣列，遮 user_id、viewer_id、nickname，不修改傳入的值', () => {
     const value = {
       user_id: 123,
       viewer_id: '456',
       nickname: '玩家',
-      personal_buff_user_id: '789',
       raid: { multi_raid_member_info: [{ nickname: 'A', user_id: '1', level: 200 }, { nickname: 'B', user_id: '2', level: 150 }] },
-      deep: [[{ viewer_id: { nested: true } }]],
+      deep: [[{ x: { viewer_id: '777' } }]],
       keep: null,
     }
     const frozen = structuredClone(value)
@@ -176,12 +204,49 @@ describe('遮罩', () => {
       user_id: '***',
       viewer_id: '***',
       nickname: '***',
-      personal_buff_user_id: '789',
       raid: { multi_raid_member_info: [{ nickname: '***', user_id: '***', level: 200 }, { nickname: '***', user_id: '***', level: 150 }] },
-      deep: [[{ viewer_id: '***' }]],
+      deep: [[{ x: { viewer_id: '***' } }]],
       keep: null,
     })
     assert.deepEqual(value, frozen)
+  })
+
+  it('key 去掉底線、轉小寫後比對：駝峰欄位、user_name、user_image 也遮', () => {
+    assert.deepEqual(
+      maskValue({ userId: '1', viewerId: 2, userName: 'A', user_name: 'B', userImage: 'x.png', user_image: 'y.png', NickName: 'C' }),
+      { userId: '***', viewerId: '***', userName: '***', user_name: '***', userImage: '***', user_image: '***', NickName: '***' },
+    )
+  })
+
+  it('以 userid 結尾的 key 是字串或數字時遮，false、null 等其他值保留', () => {
+    assert.deepEqual(
+      maskValue({ buffs: [
+        { status: '1', personal_buff_user_id: '87654321', personal_debuff_user_id: 87654321 },
+        { status: '2', personal_buff_user_id: false, personal_debuff_user_id: null },
+        { status: '3', user_id: false, nickname: true },
+      ] }),
+      { buffs: [
+        { status: '1', personal_buff_user_id: '***', personal_debuff_user_id: '***' },
+        { status: '2', personal_buff_user_id: false, personal_debuff_user_id: null },
+        { status: '3', user_id: false, nickname: true },
+      ] },
+    )
+  })
+
+  it('要遮的 key 底下是物件或陣列時不整個遮，繼續往下走訪', () => {
+    assert.deepEqual(maskValue({ user_id: { nickname: 'A', level: 1 }, nickname: ['B'] }), { user_id: { nickname: '***', level: 1 }, nickname: ['B'] })
+  })
+
+  it('不相干的 key 不遮：只比對完整名稱與 userid 結尾', () => {
+    const value = { raid_id: 11111111, user_rank: 300, nickname_color: 'red', userid_list: ['1'], pc_image: 'p.png', level: 200 }
+    assert.deepEqual(maskValue(value), value)
+  })
+
+  it('WebSocket 聊天 chatAdd、raidPost、raidGet 的值整個遮掉，不論型別', () => {
+    assert.deepEqual(
+      maskValue(['raid', { chatAdd: { userId: '1', commentData: { content: '你好' } }, raidPost: { user_comment: { text: 'hi' } }, raidGet: [{ a: 1 }], bossUpdate: { param: { boss1_hp: 5 } } }]),
+      ['raid', { chatAdd: '***', raidPost: '***', raidGet: '***', bossUpdate: { param: { boss1_hp: 5 } } }],
+    )
   })
 
   it('maskUrl 遮掉查詢參數 uid，不動其他參數與路徑', () => {
@@ -207,15 +272,14 @@ describe('遮罩', () => {
     assert.deepEqual(record, frozen)
   })
 
-  it('maskRecord 對不是 JSON 的 requestData 原樣保留，物件形式的 requestData 直接遮罩', () => {
+  it('maskRecord 對不是 JSON 的 requestData 原樣保留，沒有 requestData 時維持 undefined', () => {
     assert.equal(maskRecord({ t: 0, url: '/x', requestData: 'a=1&b=2' }).requestData, 'a=1&b=2')
-    assert.deepEqual(maskRecord({ t: 0, url: '/x', requestData: { user_id: 1 } }).requestData, { user_id: '***' })
     assert.equal(maskRecord({ t: 0, url: '/x' }).requestData, undefined)
   })
 
   it('WebSocket 訊框（解析後的陣列）也會遮', () => {
-    const record: RecRecord = { t: 0, url: 'websocket', responseData: ['raid', { memberJoin: { user_id: '1', nickname: 'A' } }] }
-    assert.deepEqual(maskRecord(record).responseData, ['raid', { memberJoin: { user_id: '***', nickname: '***' } }])
+    const record: RecRecord = { t: 0, url: 'websocket', responseData: ['raid', { memberJoin: { user_id: '1', nickname: 'A' }, chatAdd: { userId: '1' } }] }
+    assert.deepEqual(maskRecord(record).responseData, ['raid', { memberJoin: { user_id: '***', nickname: '***' }, chatAdd: '***' }])
   })
 })
 

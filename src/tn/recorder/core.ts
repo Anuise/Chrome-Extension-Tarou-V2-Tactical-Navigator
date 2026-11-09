@@ -6,7 +6,7 @@ import dayjs from 'dayjs'
 export interface RecRecord {
   t: number
   url: string
-  requestData?: unknown
+  requestData?: string
   responseData?: unknown
 }
 
@@ -16,7 +16,7 @@ export interface RecIndexEntry {
   /** start.json 的 quest_id；錄到 start.json 之前沒有 */
   questId?: string
   startedAt: number
-  /** 最後一次收到這場的資料（含截斷後略過的），用來判斷哪一場是「最近一場」 */
+  /** 最後一次收到這場的資料（含截斷後略過的），用來判斷哪一場是「最近一場」，以及超過上限時先刪哪一場 */
   lastAt: number
   count: number
   bytes: number
@@ -54,10 +54,10 @@ export function byteLength(record: RecRecord): number {
   return new TextEncoder().encode(JSON.stringify(record)).length
 }
 
-/** requestData 是 JSON 字串時回傳解析結果，否則原樣回傳；解析失敗回傳 undefined */
-function parseRequestData(requestData: unknown): unknown {
-  if (typeof requestData !== 'string')
-    return requestData
+/** requestData 的解析結果；沒有 requestData 或不是 JSON 時回傳 undefined */
+function parseRequestData(requestData: string | undefined): unknown {
+  if (requestData === undefined)
+    return undefined
   try {
     return JSON.parse(requestData)
   }
@@ -99,11 +99,16 @@ export function resolveRaidId(record: RecRecord): { raidId: string, source: Raid
   return undefined
 }
 
-/** 這筆該歸到哪一場：紀錄本身判斷不出來時，歸到最後收到資料的那一場；索引是空的回傳 undefined */
+/**
+ * 這筆該歸到哪一場，回傳 undefined 表示不錄（索引是空的）。
+ * - requestData、responseData 的 raid_id 可以建立新的一場
+ * - URL 路徑取到的數字只能對到索引裡已有的場次：路徑裡的長數字可能是角色 ID 等其他 ID，建新場會把正在錄的場次擠掉
+ * - 其他情況歸到最後收到資料的那一場
+ */
 export function raidIdOf(record: RecRecord, index: readonly RecIndexEntry[]): string | undefined {
-  const resolved = resolveRaidId(record)?.raidId
-  if (resolved)
-    return resolved
+  const resolved = resolveRaidId(record)
+  if (resolved && (resolved.source !== 'url' || index.some(e => e.raidId === resolved.raidId)))
+    return resolved.raidId
   let latest: RecIndexEntry | undefined
   for (const entry of index) {
     if (!latest || entry.lastAt >= latest.lastAt)
@@ -133,7 +138,8 @@ export interface AppendPlan {
  * - 新的一場接在索引最後
  * - 這場已截斷：不寫入
  * - 這場加上這筆會超過 maxBytes：標記截斷，不寫入
- * - 寫入後場數超過 maxRaids 或總量超過 maxBytes：由最舊的一場開始刪，不刪這一場
+ * - 寫入後場數超過 maxRaids 或總量超過 maxBytes：由 lastAt 最小（最久沒收到資料）的一場開始刪，不刪這一場；
+ *   lastAt 相同時先刪索引裡排前面（較早開始）的
  */
 export function planAppend(
   index: readonly RecIndexEntry[],
@@ -166,26 +172,44 @@ export function planAppend(
   const removed: RecIndexEntry[] = []
   const total = () => list.reduce((sum, e) => sum + e.bytes, 0)
   while (list.length > limits.maxRaids || total() > limits.maxBytes) {
-    const oldest = list.find(e => e !== entry)
+    const others = list.filter(e => e !== entry)
     // 只剩這一場時，它單獨不會超過 maxBytes（超過的話上面已標記截斷而沒寫入）
-    if (!oldest)
+    if (others.length === 0)
       break
-    removed.push(oldest)
-    list = list.filter(e => e !== oldest)
+    const stalest = others.reduce((a, b) => b.lastAt < a.lastAt ? b : a)
+    removed.push(stalest)
+    list = list.filter(e => e !== stalest)
   }
 
   return { index: list, key, removed }
 }
 
-const MASKED_KEYS = new Set(['user_id', 'viewer_id', 'nickname'])
+/** 玩家識別資料的 key，比對前先去掉 `_`、轉小寫 */
+const MASKED_KEYS = new Set(['userid', 'viewerid', 'nickname', 'username', 'userimage'])
+/** WebSocket 聊天：分析戰鬥用不到，而且有其他玩家的發言，值整個遮掉 */
+const CHAT_KEYS = new Set(['chatAdd', 'raidPost', 'raidGet'])
 const MASK = '***'
 
-/** 深層走訪，key 是 user_id、viewer_id、nickname 的值換成 "***"；回傳新物件，不修改傳入的值 */
+function maskEntry(key: string, value: unknown): unknown {
+  if (CHAT_KEYS.has(key))
+    return MASK
+  const normalized = key.replaceAll('_', '').toLowerCase()
+  // 只遮字串與數字：非個人 buff 的 personal_buff_user_id 是 false，遮掉會失去「不是個人 buff」這個資訊
+  if ((MASKED_KEYS.has(normalized) || normalized.endsWith('userid')) && (typeof value === 'string' || typeof value === 'number'))
+    return MASK
+  return maskValue(value)
+}
+
+/**
+ * 深層走訪，回傳新物件，不修改傳入的值：
+ * - key 去掉 `_`、轉小寫後是 userid、viewerid、nickname、username、userimage，或以 userid 結尾，而且值是字串或數字：換成 "***"
+ * - key 是 chatAdd、raidPost、raidGet：值整個換成 "***"
+ */
 export function maskValue(value: unknown): unknown {
   if (Array.isArray(value))
     return value.map(maskValue)
   if (value && typeof value === 'object')
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, MASKED_KEYS.has(k) ? MASK : maskValue(v)]))
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, maskEntry(k, v)]))
   return value
 }
 
@@ -194,17 +218,14 @@ export function maskUrl(url: string): string {
   return url.replace(/([?&]uid=)[^&#]*/g, `$1${MASK}`)
 }
 
-/** 匯出用的遮罩：requestData 是 JSON 字串時解析後遮罩再轉回字串，不是 JSON 的字串原樣保留 */
+/** 匯出用的遮罩：requestData 解析後遮罩再轉回字串，不是 JSON 的字串原樣保留 */
 export function maskRecord(record: RecRecord): RecRecord {
   let requestData = record.requestData
-  if (typeof requestData === 'string') {
+  if (requestData !== undefined) {
     try {
       requestData = JSON.stringify(maskValue(JSON.parse(requestData)))
     }
     catch {}
-  }
-  else {
-    requestData = maskValue(requestData)
   }
   return { ...record, url: maskUrl(record.url), requestData, responseData: maskValue(record.responseData) }
 }

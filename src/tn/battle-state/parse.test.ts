@@ -311,6 +311,13 @@ describe('reduceBattleState', () => {
     assert.deepEqual(next.summons.map(s => s.used), [0, 0, 0, 1])
   })
 
+  it('召喚回應的 requestData 是 null 時不拋錯，也不計次', () => {
+    const state = reduceBattleState(null, start)
+    const next = reduceBattleState(state, { url: '/rest/multiraid/summon_result.json', requestData: null, responseData: action([]) }) as BattleState
+
+    assert.deepEqual(next.summons.map(s => s.used), [0, 0, 0, 0])
+  })
+
   it('連鎖技能回應記為已發動', () => {
     const state = reduceBattleState(null, start)
     const next = reduceBattleState(state, { url: '/rest/multiraid/group_gauge_action_result.json', requestData: '{}', responseData: action([]) }) as BattleState

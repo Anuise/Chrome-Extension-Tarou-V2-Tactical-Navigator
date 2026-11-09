@@ -99,7 +99,7 @@
 | rebase 或 force push `main` | merge | ADR-0001 |
 | 推送 `x.y.z` 格式的 tag（會觸發 `release.yml`） | `tn-v*` | ADR-0005 |
 | 在 `main` 上直接修 upstream 的 bug | §9 的 `upstream-pr/<slug>` | [ADR-0006](../adr/0006-upstream-contribution.md) |
-| ① 主動向遊戲伺服器發送任何請求（`fetch`、`XMLHttpRequest`、jQuery ajax、在頁面注入程式觸發遊戲 API）；② 呼叫 `chrome.debugger.attach`、`detach`、`sendCommand`（任何指令都不行），tn 只監聽 upstream 掛上的 debugger 事件；③ 在遊戲頁面模擬點擊、`dispatchEvent`、改 DOM 或表單值來觸發遊戲操作 | 只被動接收遊戲自己收發的資料，包括 §3 的 `tnUnpack`（AJAX 回應）、`chrome.debugger` 事件監聽（WebSocket 訊框）、content script 只讀 DOM | 使用者鐵則（2026-11-09） |
+| ① 主動向遊戲伺服器發送任何請求或訊息：`fetch`、`XMLHttpRequest`、jQuery ajax、在頁面注入程式觸發遊戲 API、經遊戲的 WebSocket 送出訊息、重送／修改／攔截／延遲遊戲自己的請求，以及用程式重新整理或導覽遊戲分頁。「遊戲伺服器」指遊戲 API 所在的主機（`game.granbluefantasy.jp`、`gbf.game.mbga.jp` 等）；upstream 元件顯示的靜態圖片（`IMG_URI` 的 CDN）不算，但 tn 不可自己組遊戲 API 的 URL 去抓；② 呼叫 `chrome.debugger.attach`、`detach`、`sendCommand`（任何指令都不行，包括唯讀指令），tn 只監聽 upstream 掛上的 debugger 事件；③ 修改遊戲頁面：模擬點擊、`dispatchEvent`、改 DOM 或表單值、呼叫遊戲頁面的 JS 函式或修改遊戲的 JS 變數。遊戲頁面的 DOM 一律只讀，tn 要在遊戲頁面加自己的顯示元素也要先問使用者 | 只被動接收遊戲自己收發的資料：§3 的 `tnUnpack`（AJAX 回應）、`chrome.debugger` 事件監聽（WebSocket 訊框）、content script 只讀 DOM | 使用者鐵則（2026-11-09）。② 連唯讀的 CDP 指令也禁止，理由有三：用 grep 就能檢查；不會干擾 upstream 管理的 debugger 連線；CDP 有 `Runtime.evaluate`、`Input.dispatchMouseEvent` 這類主動指令，允許清單不好維護。真的需要時照本表表頭先問使用者。①「CDN 圖片不算」是主管的解讀，已告知使用者 |
 
 ## 6. 使用 upstream 程式碼
 

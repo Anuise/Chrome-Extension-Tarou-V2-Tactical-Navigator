@@ -132,6 +132,8 @@ pnpm tc
 pnpm lint
 ```
 
+另外確認 `manifest.json` 仍有 `unlimitedStorage`；沒有的話，先停用錄製器（它最多存 50 MB，沒有這個權限時會和 upstream 共用 10 MB，把配額用完）。
+
 merge commit 訊息：`chore(sync): merge upstream <upstream 短 hash>`。
 
 ## 8. 依賴

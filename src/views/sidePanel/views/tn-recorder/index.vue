@@ -38,17 +38,29 @@ function download({ name, text }: { name: string, text: string }) {
 }
 
 async function handleExport(entry: RecIndexEntry) {
-  const records = await loadRecords(entry)
-  download(buildExport(entry, records, new Date()))
-  if (records.length < entry.count)
-    ElMessage.warning(`已匯出 ${records.length} 筆，有 ${entry.count - records.length} 筆讀不到`)
-  else
-    ElMessage.success(`已匯出 ${records.length} 筆`)
+  try {
+    const records = await loadRecords(entry)
+    download(buildExport(entry, records, new Date()))
+    if (records.length < entry.count)
+      ElMessage.warning(`已匯出 ${records.length} 筆，有 ${entry.count - records.length} 筆讀不到`)
+    else
+      ElMessage.success(`已匯出 ${records.length} 筆`)
+  }
+  catch (error) {
+    console.error('[tn] 匯出錄製資料失敗', error)
+    ElMessage.error(`匯出失敗：${String(error)}`)
+  }
 }
 
 async function handleClear() {
-  await clearRecordings()
-  ElMessage.success('已清除全部錄製資料')
+  try {
+    await clearRecordings()
+    ElMessage.success('已清除全部錄製資料')
+  }
+  catch (error) {
+    console.error('[tn] 清除錄製資料失敗', error)
+    ElMessage.error(`清除失敗：${String(error)}`)
+  }
 }
 </script>
 
@@ -67,11 +79,13 @@ async function handleClear() {
     </div>
 
     <div w-300px flex flex-col gap-4px text-12px text-neutral-4>
-      <div>開啟後，戰鬥中遊戲自己發出的 API 回應會原樣存下來，供研究戰鬥資料格式。外掛不會主動向遊戲伺服器發送任何請求。</div>
+      <div>開啟後，戰鬥中遊戲自己發出的 API 回應會原樣存下來，供研究戰鬥資料格式。錄製功能不會主動向遊戲伺服器發送任何請求。</div>
+      <div>・請在進入戰鬥前開始錄製；已經在戰鬥中時，重新整理戰鬥頁面即可補錄開場資料。</div>
+      <div>・打完請立即匯出，並停止錄製（只保留最近 {{ REC_LIMITS.maxRaids }} 場，多段戰每一段算一場）。</div>
       <div>・資料只存在本機（這台電腦的瀏覽器），不會上傳。</div>
-      <div>・匯出時會把 user_id、viewer_id、暱稱，以及網址裡的 uid 換成 ***。</div>
+      <div>・匯出時會遮掉玩家 ID、暱稱、頭像與聊天內容。</div>
       <div>・把匯出檔交給 Claude 分析時，檔案內容會送到模型服務。</div>
-      <div>・最多保留最近 {{ REC_LIMITS.maxRaids }} 場、總共 {{ formatBytes(REC_LIMITS.maxBytes) }}，超過時刪除最舊的一場；單一場超過上限時，停止錄這一場。</div>
+      <div>・總共超過 {{ formatBytes(REC_LIMITS.maxBytes) }} 時，刪除最久沒有新資料的一場；單一場超過上限時，停止錄這一場。</div>
       <div>・多人戰的 WebSocket 訊息，只有進入戰鬥時側欄開著才錄得到。</div>
     </div>
 

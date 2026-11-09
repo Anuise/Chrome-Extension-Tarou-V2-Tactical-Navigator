@@ -35,6 +35,7 @@ export function dispatchParcel(parcel: unknown, handlers: ((parcel: TnParcel) =>
 }
 
 // 後續票各在這裡加一個 import 和一個項目
+// handler 不可修改傳入的 parcel：同一個物件會交給每個 handler，錄製器會延後寫入
 const handlers: ((parcel: TnParcel) => void)[] = [
   recordParcel,
 ]

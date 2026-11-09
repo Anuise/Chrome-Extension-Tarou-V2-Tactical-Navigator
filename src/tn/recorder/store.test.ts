@@ -3,8 +3,9 @@ import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { after, afterEach, before, beforeEach, describe, it, mock } from 'node:test'
 import { StorageSerializers } from '@vueuse/core'
+import { setupTnBackground, tnUnpack } from '../core/dispatch'
 import { REC_ENABLED_KEY, REC_INDEX_KEY, REC_LIMITS } from './core'
-import { clearRecordings, loadRecords, recordParcel, setupRecorderWebSocket } from './store'
+import { clearRecordings, loadIndex, loadRecords, recordParcel, setupRecorderWebSocket } from './store'
 
 // 假的 chrome.storage.local：Map 實作 get／set／remove，並記下每次 set、remove 動到哪些 key
 const data = new Map<string, unknown>()
@@ -224,6 +225,17 @@ describe('WebSocket', () => {
   })
 })
 
+describe('loadIndex', () => {
+  it('沒有索引時回傳空陣列（側欄頁靠它顯示「尚未錄到任何場次」）', async () => {
+    assert.deepEqual(await loadIndex(), [])
+  })
+
+  it('有索引時原樣回傳', async () => {
+    data.set(REC_INDEX_KEY, [entry('1', 1)])
+    assert.deepEqual(await loadIndex(), [entry('1', 1)])
+  })
+})
+
 describe('loadRecords', () => {
   it('依序號讀出一場的紀錄，讀不到的序號略過', async () => {
     data.set('tn:rec:7:0', { t: 0, url: '/a' })
@@ -243,5 +255,20 @@ describe('clearRecordings', () => {
     data.set('tn:battle-scripts', '[]')
     await clearRecordings()
     assert.deepEqual([...data.keys()].sort(), ['battleRecord', REC_ENABLED_KEY, 'tn:battle-scripts'].sort())
+  })
+})
+
+describe('接線（dispatch.ts 的 handlers 與 setups）', () => {
+  it('tnUnpack 會把戰鬥回應交給錄製器：recordParcel 在 handlers 裡', async () => {
+    enable()
+    tnUnpack(JSON.stringify(parcel))
+    await flush()
+    assert.ok(data.has('tn:rec:11111111:0'))
+  })
+
+  it('setupTnBackground 會註冊 WebSocket 監聽：setupRecorderWebSocket 在 setups 裡', () => {
+    const before = debuggerListeners.length
+    setupTnBackground()
+    assert.equal(debuggerListeners.length, before + 1)
   })
 })

@@ -38,7 +38,7 @@ const local = {
   },
 }
 
-// 假的 chrome.debugger：只有 onEvent.addListener，沒有 attach、sendCommand、detach，誤呼叫就會丟錯
+// 假的 chrome.debugger：只有 onEvent.addListener，沒有掛上、卸下與送指令的方法，誤呼叫就會丟錯
 type DebuggerListener = (source: unknown, method: string, params?: unknown) => void
 const debuggerListeners: DebuggerListener[] = []
 

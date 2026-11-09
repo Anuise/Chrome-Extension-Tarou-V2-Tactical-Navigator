@@ -34,9 +34,15 @@ describe('dispatchParcel', () => {
   it('每個 handler 依序收到同一個解析後的物件', () => {
     const calls: { name: string, parcel: TnParcel }[] = []
     dispatchParcel(JSON.stringify(sample), [
-      parcel => calls.push({ name: 'a', parcel }),
-      parcel => calls.push({ name: 'b', parcel }),
-      parcel => calls.push({ name: 'c', parcel }),
+      (parcel) => {
+        calls.push({ name: 'a', parcel })
+      },
+      (parcel) => {
+        calls.push({ name: 'b', parcel })
+      },
+      (parcel) => {
+        calls.push({ name: 'c', parcel })
+      },
     ])
     assert.deepEqual(calls.map(c => c.name), ['a', 'b', 'c'])
     assert.deepEqual(calls[0].parcel, sample)
@@ -52,6 +58,19 @@ describe('dispatchParcel', () => {
     ]))
     assert.equal(after.mock.callCount(), 1)
     assert.deepEqual(after.mock.calls[0].arguments[0], sample)
+    assert.equal(consoleError.mock.callCount(), 1)
+    assert.match(String(consoleError.mock.calls[0].arguments[0]), /^\[tn\]/)
+  })
+
+  it('handler 回傳的 Promise reject 時接住並以 [tn] 前綴印出，後面的 handler 仍被呼叫', async () => {
+    const after = mock.fn()
+    assert.doesNotThrow(() => dispatchParcel(JSON.stringify(sample), [
+      async () => { throw new Error('async boom') },
+      after,
+    ]))
+    assert.equal(after.mock.callCount(), 1)
+    // rejection 在 microtask 才發生，等到下一個 macrotask 再檢查
+    await new Promise(resolve => setImmediate(resolve))
     assert.equal(consoleError.mock.callCount(), 1)
     assert.match(String(consoleError.mock.calls[0].arguments[0]), /^\[tn\]/)
   })

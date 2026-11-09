@@ -13,14 +13,16 @@ export function exportBattleRecord(records: readonly unknown[], now: Date): Scri
 }
 
 /**
- * 最新一場是否可能還沒打完：最新一場（records[0]）就是 battleInfo 目前的戰鬥，而且 boss HP 還大於 0。
- * upstream 開戰時就把這一場加進 battleRecord，之後每次行動才更新，這時匯出的紀錄只到目前的回合。
- * 全滅、撤退的場次 boss HP 也大於 0，所以只能說「可能」。
+ * 找出可能還沒打完的目前這場：battleInfo 的 boss HP 大於 0 時，回傳 battleId 相同的那筆紀錄；否則回傳 undefined。
+ * upstream 開戰時就把這一場加進 battleRecord，之後每次行動才更新，這時匯出的紀錄只到進行中的回合。
+ * 和 upstream 一樣用 find 找目前這場：回到已有紀錄的戰鬥時，upstream 不會把它移到最前面。
+ * 只能盡力而為，boss HP 不一定反映戰鬥有沒有結束：
+ * - 全滅、撤退，以及多人戰由別人擊倒卻沒收到 battleFinish 時，HP 仍大於 0，會被當成還在打
+ * - 多隻敵人時，upstream 擊倒任何一隻都會把 HP 設成 0，下次更新 HP 之前不會被當成還在打
  */
-export function isLatestBattleOngoing(records: readonly { raid_id: number }[], battleInfo: Partial<BattleInfo>): boolean {
-  const latest = records.at(0)
-  // battleInfo 是 storage 裡的資料，剛安裝時為空物件，bossInfo 可能不存在
+export function findOngoingRecord<T extends { raid_id: number }>(records: readonly T[], battleInfo: Partial<BattleInfo>): T | undefined {
+  // battleInfo 是 storage 裡的資料：剛安裝時為空物件，沒有 bossInfo；舊資料可能沒有 hp
   const bossInfo = battleInfo.bossInfo
   // 與 upstream 相同，raid_id 轉成字串後和 battleId 比對
-  return latest !== undefined && bossInfo !== undefined && String(latest.raid_id) === bossInfo.battleId && bossInfo.hp > 0
+  return bossInfo && bossInfo.hp > 0 ? records.find(r => String(r.raid_id) === bossInfo.battleId) : undefined
 }

@@ -2,7 +2,7 @@ import type { BattleInfo } from '~/tn/core/upstream'
 import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
-import { exportBattleRecord, isLatestBattleOngoing } from './record'
+import { exportBattleRecord, findOngoingRecord } from './record'
 
 /** 一場戰鬥紀錄：只放部分欄位，匯出不依賴紀錄的形狀 */
 function record(raidId: number, questId: string) {
@@ -46,29 +46,37 @@ describe('exportBattleRecord', () => {
 })
 
 /** battleInfo：只放判斷用到的 bossInfo 欄位 */
-function battleInfo(battleId: string, hp: number) {
+function battleInfo(battleId: string, hp?: number) {
   return { bossInfo: { battleId, hp } } as Partial<BattleInfo>
 }
 
-describe('isLatestBattleOngoing', () => {
-  it('最新一場就是目前的戰鬥，而且 boss HP 大於 0 時為 true', () => {
-    assert.equal(isLatestBattleOngoing([record(2, '305421'), record(1, '305421')], battleInfo('2', 1)), true)
+describe('findOngoingRecord', () => {
+  it('目前這場在第一筆、boss HP 大於 0 時，回傳這一筆', () => {
+    const records = [record(2, '305421'), record(1, '305421')]
+
+    assert.equal(findOngoingRecord(records, battleInfo('2', 1)), records[0])
   })
 
-  it('boss HP 為 0（已擊倒）時為 false', () => {
-    assert.equal(isLatestBattleOngoing([record(2, '305421')], battleInfo('2', 0)), false)
+  it('目前這場不在第一筆（回到較早的戰鬥）時，仍回傳這一筆', () => {
+    const records = [record(2, '305421'), record(1, '305701')]
+
+    assert.equal(findOngoingRecord(records, battleInfo('1', 5000)), records[1])
   })
 
-  it('目前的戰鬥不是最新一場時為 false，即使 boss HP 大於 0', () => {
-    assert.equal(isLatestBattleOngoing([record(2, '305421'), record(1, '305421')], battleInfo('1', 5000)), false)
-    assert.equal(isLatestBattleOngoing([record(2, '305421')], battleInfo('3', 5000)), false)
+  it('boss HP 為 0（已擊倒）時為 undefined', () => {
+    assert.equal(findOngoingRecord([record(2, '305421')], battleInfo('2', 0)), undefined)
   })
 
-  it('battleInfo 沒有 bossInfo（剛安裝）時為 false', () => {
-    assert.equal(isLatestBattleOngoing([record(2, '305421')], {}), false)
+  it('battleId 對不上任何一場時為 undefined', () => {
+    assert.equal(findOngoingRecord([record(2, '305421'), record(1, '305421')], battleInfo('3', 5000)), undefined)
   })
 
-  it('沒有紀錄時為 false', () => {
-    assert.equal(isLatestBattleOngoing([], battleInfo('2', 5000)), false)
+  it('battleInfo 沒有 bossInfo（剛安裝），或 bossInfo 沒有 hp（舊資料）時為 undefined', () => {
+    assert.equal(findOngoingRecord([record(2, '305421')], {}), undefined)
+    assert.equal(findOngoingRecord([record(2, '305421')], battleInfo('2')), undefined)
+  })
+
+  it('沒有紀錄時為 undefined', () => {
+    assert.equal(findOngoingRecord([], battleInfo('2', 5000)), undefined)
   })
 })

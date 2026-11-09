@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { MessageHandler } from 'element-plus'
 import type { BattleScript } from 'tn'
 import type { ImportResult, ScriptFile } from '~/tn/battle-script/manage'
 import { useFileDialog } from '@vueuse/core'
@@ -7,7 +8,7 @@ import { ElMessage } from 'element-plus'
 import { computed, ref, watch } from 'vue'
 import { selectAdvice } from '~/tn/battle-script/core'
 import { exportScript, importScripts, removeScript } from '~/tn/battle-script/manage'
-import { exportBattleRecord, isLatestBattleOngoing } from '~/tn/battle-script/record'
+import { exportBattleRecord, findOngoingRecord } from '~/tn/battle-script/record'
 import { toBattleSnapshot } from '~/tn/battle-script/snapshot'
 import { battleScripts, selectedScriptKey } from '~/tn/battle-script/store'
 import { battleInfo, battleRecord, BossCard } from '~/tn/core/upstream'
@@ -69,17 +70,22 @@ function handleExport(script: BattleScript) {
   download(exportScript(script))
 }
 
+/** 目前這場可能還沒打完時的 warning：不會自動消失，下次匯出前先關掉，畫面上只留最新一則 */
+let ongoingWarning: MessageHandler | undefined
+
 /** 匯出 upstream 的 battleRecord（最近 10 場）全部場次，只讀不寫 */
 function handleExportRecord() {
+  ongoingWarning?.close()
   const records = battleRecord.value
   if (records.length === 0) {
     ElMessage.warning('沒有戰鬥紀錄可以匯出')
     return
   }
   download(exportBattleRecord(records, new Date()))
-  // 戰鬥中照樣下載，但提醒最新一場只到目前的回合；提示要等使用者關閉，避免沒看到
-  if (isLatestBattleOngoing(records, battleInfo.value))
-    ElMessage.warning({ message: `已匯出最近 ${records.length} 場。最新一場可能還沒打完，紀錄只到第 ${records[0].turn} 回合；結算畫面出現後請再匯出一次`, duration: 0, showClose: true })
+  // 目前這場可能還沒打完時照樣下載，但提醒紀錄只到進行中的回合；tn 分不出全滅、撤退和還在打，兩種情況都要寫
+  const ongoing = findOngoingRecord(records, battleInfo.value)
+  if (ongoing)
+    ongoingWarning = ElMessage.warning({ message: `已匯出最近 ${records.length} 場。目前這場可能還沒打完：如果還在打，紀錄只到進行中的第 ${ongoing.turn} 回合，打完後再匯出一次；如果這場已經結束（包括全滅、撤退），紀錄就是完整的`, duration: 0, showClose: true })
   else
     ElMessage.success(`已匯出最近 ${records.length} 場`)
 }

@@ -85,8 +85,8 @@ Status: ready-for-agent
   - `validateScript(input: unknown)`：回傳 `{ ok: true, script }` 或 `{ ok: false, errors }`；每個 error 指出規則索引與欄位路徑。以手寫型別守衛實作，不新增驗證套件。
   - `selectAdvice(scripts, snapshot, selectedScriptKey?)`：輸入已啟用的戰鬥腳本與 `BattleSnapshot`，回傳相符腳本清單、目前選中的腳本（未指定時取第一份），以及選中腳本中成立的規則（保持腳本順序）。
 - **BattleSnapshot**：核心模組自己定義的輸入型別，與 upstream 型別解耦。欄位：`questId`、`battleCount`、`turn`、`hpPercent`、`gauge`（boss 獨有計量條）、`omenText`（預兆文字）、`bossBuffStatuses`（boss buff 的 status 字串陣列）。
-- **側欄頁 `tn-battle-script`**：經由 tn 側欄註冊掛鉤點加入 `downViewList`。負責：把 upstream 的 `battleInfo` 轉成 `BattleSnapshot`；呼叫核心模組；畫出建議區與腳本管理區。boss 狀態卡經由 upstream 介面層 import upstream 的 `BossCard` 元件（ADR-0008），不複製、不修改。
-- **儲存**：戰鬥腳本與啟用狀態存在 `tn:battle-scripts`。只讀 upstream 的 `battleInfo`，不寫入任何 upstream storage key。
+- **側欄頁 `tn-battle-script`**：經由 tn 側欄註冊掛鉤點加入 `downViewList`。負責：把 upstream 的 `battleInfo` 轉成 `BattleSnapshot`；呼叫核心模組；畫出建議區與腳本管理區；另有「匯出戰鬥紀錄」按鈕（見 07）。boss 狀態卡經由 upstream 介面層 import upstream 的 `BossCard` 元件（ADR-0008），不複製、不修改。
+- **儲存**：戰鬥腳本與啟用狀態存在 `tn:battle-scripts`。只讀 upstream 的 `battleInfo` 與 `battleRecord`（後者只用於匯出戰鬥紀錄，見 07），不寫入任何 upstream storage key。
 - **資料來源全部沿用 upstream 已存的欄位**：回合（`bossInfo.turn`）、HP%（`bossInfo.hpPercent`）、計量條（`bossInfo.addition.genesis`）、預兆文字（`bossInfo.interrupt_display_text`，以 `|` 連接）、boss buff（`buffInfo.bossBuffs[].status`）、questId（`bossInfo.questId`）。本 spec 不需要 `tnUnpack` 解析，也不需要 content script。
 - **battleCount**：upstream 目前沒有存 `battle.count`。實作時先確認 `battleInfo` 中是否可取得；取不到時視為 1，並在腳本省略 `battleCount` 時不比對該欄位。
 - **轉譯工具**（fork 腳本目錄，`npx tsx` 執行，cheerio 解析）：

@@ -7,7 +7,7 @@ import { ElMessage } from 'element-plus'
 import { computed, ref, watch } from 'vue'
 import { selectAdvice } from '~/tn/battle-script/core'
 import { exportScript, importScripts, removeScript } from '~/tn/battle-script/manage'
-import { exportBattleRecord } from '~/tn/battle-script/record'
+import { exportBattleRecord, isLatestBattleOngoing } from '~/tn/battle-script/record'
 import { toBattleSnapshot } from '~/tn/battle-script/snapshot'
 import { battleScripts, selectedScriptKey } from '~/tn/battle-script/store'
 import { battleInfo, battleRecord, BossCard } from '~/tn/core/upstream'
@@ -71,11 +71,17 @@ function handleExport(script: BattleScript) {
 
 /** 匯出 upstream 的 battleRecord（最近 10 場）全部場次，只讀不寫 */
 function handleExportRecord() {
-  if (battleRecord.value.length === 0) {
+  const records = battleRecord.value
+  if (records.length === 0) {
     ElMessage.warning('沒有戰鬥紀錄可以匯出')
     return
   }
-  download(exportBattleRecord(battleRecord.value, new Date()))
+  download(exportBattleRecord(records, new Date()))
+  // 戰鬥中照樣下載，但提醒最新一場只到目前的回合；提示要等使用者關閉，避免沒看到
+  if (isLatestBattleOngoing(records, battleInfo.value))
+    ElMessage.warning({ message: `已匯出最近 ${records.length} 場。最新一場可能還沒打完，紀錄只到第 ${records[0].turn} 回合；結算畫面出現後請再匯出一次`, duration: 0, showClose: true })
+  else
+    ElMessage.success(`已匯出最近 ${records.length} 場`)
 }
 
 function handleRemove(script: BattleScript) {

@@ -159,7 +159,7 @@ Status: ready-for-agent
 - 「神意」作為規則條件（改以每種神意各一份腳本處理）。
 - 「階段」作為規則條件（以計量條與 HP 區間表達）。
 - 在側欄頁內編輯腳本。
-- 由 extension 匯出隊伍或戰鬥紀錄給 skill 反推腳本。
+- 由 extension 匯出資料給 skill「自動」反推腳本。原樣匯出戰鬥紀錄見 07（`issues/07-export-battle-record.md`）。
 - NGA 的內容區塊 selector（等使用者提供範例 HTML）。
 - 2.0 以外戰鬥系統的專門支援；第一個驗證案例只有「Lv350 顕現せし破壊の化身」。
 

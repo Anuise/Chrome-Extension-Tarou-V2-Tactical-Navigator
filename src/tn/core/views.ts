@@ -2,4 +2,5 @@
 // key 必須等於 src/views/sidePanel/views/ 下的目錄名
 export const tnViewList = [
   { key: 'tn-battle-script', label: '戰鬥腳本', icon: 'material-symbols:strategy' },
+  { key: 'tn-recorder', label: '錄製', icon: 'material-symbols:fiber-manual-record' },
 ]

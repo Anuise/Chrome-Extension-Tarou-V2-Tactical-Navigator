@@ -1,7 +1,7 @@
 // 錄製器的 chrome.storage 讀寫：background 錄製、側欄頁清除與匯出都用這裡
 // 錄製資料直接用 chrome.storage.local，不用 useWebExtensionStorage（它每次變動都把整個值重寫）
 // 只被動接收遊戲自己發出的請求的回應，絕不主動發請求（RULES §5）
-// 會帶入 chrome API，node:test 測試不可 import 本檔
+// 模組頂層不可呼叫 chrome API（dispatch.test.ts 會經 dispatch.ts 間接 import 本檔）
 import type { RecIndexEntry, RecRecord } from './core'
 import type { TnParcel } from '~/tn/core/dispatch'
 import { byteLength, entryKeys, isRecordable, planAppend, questIdOf, raidIdOf, REC_ENABLED_KEY, REC_INDEX_KEY, REC_LIMITS, WS_URL } from './core'

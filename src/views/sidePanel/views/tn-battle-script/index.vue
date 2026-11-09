@@ -115,7 +115,7 @@ function handleRemove(script: BattleScript) {
               {{ snapshot.questId }}
             </el-descriptions-item>
             <el-descriptions-item label="第幾場" align="center">
-              {{ snapshot.battleCount }}
+              {{ snapshot.battleCount ?? '未取得' }}
             </el-descriptions-item>
           </el-descriptions>
           <div w-300px flex flex-col gap-6px>

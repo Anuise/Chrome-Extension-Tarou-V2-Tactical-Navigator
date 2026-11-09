@@ -11,9 +11,10 @@ import { exportScript, importScripts, removeScript } from '~/tn/battle-script/ma
 import { exportBattleRecord, findOngoingRecord } from '~/tn/battle-script/record'
 import { toBattleSnapshot } from '~/tn/battle-script/snapshot'
 import { battleScripts, selectedScriptKey } from '~/tn/battle-script/store'
+import { battleState } from '~/tn/battle-state/store'
 import { battleInfo, battleRecord, BossCard } from '~/tn/core/upstream'
 
-const snapshot = computed(() => toBattleSnapshot(battleInfo.value))
+const snapshot = computed(() => toBattleSnapshot(battleInfo.value, battleRecord.value, battleState.value))
 // upstream 沒有「戰鬥中」旗標，battleInfo 戰後也不清除：有最近一場的戰鬥資料就視為在戰鬥中
 const inBattle = computed(() => snapshot.value.questId !== undefined)
 // 戰鬥狀態、腳本或選中的腳本改變時重新計算；規則不記錄觸發狀態

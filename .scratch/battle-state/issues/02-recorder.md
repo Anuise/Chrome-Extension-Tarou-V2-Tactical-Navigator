@@ -95,7 +95,7 @@
   - 換代號的範圍：key 去掉 `_`、轉小寫後**包含** `userid` 或等於 `uid`（例如 `user_id`、`userId`、`personal_buff_user_id`、`user_ids`、`member_user_id_list`），以及 URL 查詢參數 `uid=`、`user_id=`。
   - 自己是 `self`，其他人依第一次出現的順序是 `p1`、`p2`…。同一個值在整個匯出檔用同一個代號，比對時轉成字串（`123` 和 `"123"` 是同一人）。代號只在同一個檔案內固定。
   - 出現順序：照紀錄順序，每筆先 URL、再 requestData、最後 responseData，物件依 key 的順序深度優先。
-- **換成 `\***`\*\*：
+- 換成 `***` 的：
   - key 去掉 `_`、轉小寫後**包含** `viewerid`、`nickname`、`username`、`userimage`（例如 `called_user_name`、`host_nickname`、`owner_viewer_id`），以及 URL 的 `viewer_id=`。`viewer_id` 和 `user_id` 是不同的編號體系，不放進代號對照表。`nickname_color` 這類 key 也會被換掉，對戰鬥分析沒有影響；
   - 聊天：`chatAdd`、`raidPost`、`raidGet`、`commentData`、`user_comment` 的值整個換掉，不論型別。
 - 只換字串與數字；值是陣列時逐一套用同樣的規則，陣列裡的物件照舊往下走訪。`false`、`null` 保持原樣，例如不是個人 buff 時 `personal_buff_user_id` 是 `false`。
@@ -148,7 +148,7 @@
    3. 按「開始錄製」，旁邊顯示「錄製中」。
    4. 錄製時只開一個戰鬥分頁。
 3. **打兩場短的戰鬥**（兩場之間不用按停止，錄製一直開著）
-   1. 先打一場短的單人戰鬥：任何關卡都可以，不必是光屬性 solo（遊戲網址是 `#raid/…`）。
+   1. 先打一場短的單人戰鬥：選只有一場戰鬥的關卡，不必是光屬性 solo（遊戲網址是 `#raid/…`）。不要選多段戰：多段戰每一段都算一場，場次清單會超過兩場，步驟 5 的檢查會誤判。
    2. 再打一場多人戰（遊戲網址是 `#raid_multi/…`）。最好選有其他玩家的，例如去救援別人的戰鬥；只有自己的話，步驟 5 的 `p1` 那一項跳過。
    3. 多人戰開始時，瀏覽器上方如果出現「…已開始對這個瀏覽器進行偵錯」之類的提示列，**不要按「取消」**。那是 upstream 用來接收 WebSocket 的，按了就錄不到。
 4. **匯出並停止**

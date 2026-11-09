@@ -5,7 +5,7 @@ import { after, afterEach, before, beforeEach, describe, it, mock } from 'node:t
 import { StorageSerializers } from '@vueuse/core'
 import { setupTnBackground, tnUnpack } from '../core/dispatch'
 import { REC_ENABLED_KEY, REC_INDEX_KEY, REC_LIMITS } from './core'
-import { clearRecordings, loadRecords, recordParcel, setupRecorderWebSocket } from './store'
+import { clearRecordings, loadIndex, loadRecords, recordParcel, setupRecorderWebSocket } from './store'
 
 // 假的 chrome.storage.local：Map 實作 get／set／remove，並記下每次 set、remove 動到哪些 key
 const data = new Map<string, unknown>()
@@ -222,6 +222,17 @@ describe('WebSocket', () => {
     // 壞掉的 JSON 只印 log
     assert.equal(consoleError.mock.callCount(), 1)
     assert.match(String(consoleError.mock.calls[0].arguments[0]), /^\[tn\]/)
+  })
+})
+
+describe('loadIndex', () => {
+  it('沒有索引時回傳空陣列（側欄頁靠它顯示「尚未錄到任何場次」）', async () => {
+    assert.deepEqual(await loadIndex(), [])
+  })
+
+  it('有索引時原樣回傳', async () => {
+    data.set(REC_INDEX_KEY, [entry('1', 1)])
+    assert.deepEqual(await loadIndex(), [entry('1', 1)])
   })
 })
 

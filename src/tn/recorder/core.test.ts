@@ -2,7 +2,7 @@ import type { RecIndexEntry, RecLimits, RecRecord } from './core'
 import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
-import { buildExport, createIdCoder, entryKeys, findSelfId, isRecordable, maskRecord, maskUrl, maskValue, planAppend, questIdOf, raidIdOf, resolveRaidId } from './core'
+import { buildExport, byteLength, createIdCoder, entryKeys, findSelfId, isRecordable, maskRecord, maskUrl, maskValue, planAppend, questIdOf, raidIdOf, REC_LIMITS, resolveRaidId } from './core'
 
 function entry(raidId: string, fields: Partial<RecIndexEntry> = {}): RecIndexEntry {
   return { raidId, startedAt: 0, lastAt: 0, count: 1, bytes: 10, truncated: false, ...fields }
@@ -109,14 +109,16 @@ describe('planAppend', () => {
     assert.deepEqual(index, frozen)
   })
 
-  it('既有的一場維持原本的位置，序號接續、bytes 累加、lastAt 更新，questId 只在還沒有時補上', () => {
+  it('既有的一場維持原本的位置，序號接續、bytes 累加、lastAt 更新，questId 只在還沒有時補上，不修改傳入的索引', () => {
     const index = [entry('1', { count: 2, bytes: 30, startedAt: 1, lastAt: 1 }), entry('2', { questId: 'A', startedAt: 2, lastAt: 2 })]
+    const frozen = structuredClone(index)
     const first = planAppend(index, { raidId: '1', questId: 'Q', bytes: 5, now: 9 }, limits)
     assert.deepEqual(first.index.map(e => e.raidId), ['1', '2'])
     assert.equal(first.key, 'tn:rec:1:2')
     assert.deepEqual(first.index[0], { raidId: '1', questId: 'Q', startedAt: 1, lastAt: 9, count: 3, bytes: 35, truncated: false })
     const second = planAppend(index, { raidId: '2', questId: 'B', bytes: 5, now: 9 }, limits)
     assert.equal(second.index[1].questId, 'A')
+    assert.deepEqual(index, frozen)
   })
 
   it('超過場數上限時刪 lastAt 最小（最久沒收到資料）的一場', () => {
@@ -152,6 +154,16 @@ describe('planAppend', () => {
     assert.equal(stalest.index[0].bytes, 95)
   })
 
+  it('這一場加上這筆剛好等於總量上限時照常寫入、不截斷；超過才截斷', () => {
+    const equal = planAppend([entry('1', { bytes: 90 })], { raidId: '1', bytes: 10, now: 9 }, limits)
+    assert.equal(equal.key, 'tn:rec:1:1')
+    assert.equal(equal.index[0].truncated, false)
+    assert.equal(equal.index[0].bytes, 100)
+    const over = planAppend([entry('1', { bytes: 90 })], { raidId: '1', bytes: 11, now: 9 }, limits)
+    assert.equal(over.key, undefined)
+    assert.equal(over.index[0].truncated, true)
+  })
+
   it('剛好等於總量上限時不刪', () => {
     const plan = planAppend([entry('1', { bytes: 50 })], { raidId: '2', bytes: 50, now: 9 }, limits)
     assert.deepEqual(plan.removed, [])
@@ -179,6 +191,18 @@ describe('planAppend', () => {
     assert.equal(plan.key, undefined)
     assert.deepEqual(plan.index.map(e => [e.raidId, e.count, e.truncated]), [['2', 1, false], ['3', 1, false], ['4', 0, true]])
     assert.deepEqual(plan.removed.map(e => e.raidId), ['1'])
+  })
+})
+
+describe('REC_LIMITS 與 byteLength', () => {
+  it('上限是主管定案的 3 場、50 MB', () => {
+    assert.deepEqual(REC_LIMITS, { maxRaids: 3, maxBytes: 50 * 1024 * 1024 })
+  })
+
+  it('bytes 是 JSON 字串的 UTF-8 長度，不是字串長度：日文字算 3 bytes', () => {
+    const record: RecRecord = { t: 0, url: '/x', responseData: { n: 'あ' } }
+    assert.equal(JSON.stringify(record).length, 43)
+    assert.equal(byteLength(record), 45)
   })
 })
 
@@ -265,9 +289,24 @@ describe('遮罩與代號', () => {
     )
   })
 
-  it('不相干的 key 不動：uid、viewerid 等只比對完整名稱', () => {
-    const value = { raid_id: 11111111, user_rank: 300, nickname_color: 'red', turn_list: [1, 2], uid_x: '1', guid: 'g', pc_image: 'p.png', level: 200 }
+  it('不相干的 key 不動：uid 只比對完整名稱', () => {
+    const value = { raid_id: 11111111, user_rank: 300, turn_list: [1, 2], uid_x: '1', guid: 'g', pc_image: 'p.png', name: '技能名', level: 200 }
     assert.deepEqual(maskValue(value, anon()), value)
+  })
+
+  it('名稱類 key 正規化後包含 nickname、username、userimage、viewerid 就換成 ***', () => {
+    assert.deepEqual(
+      maskValue({ called_user_name: 'A', host_nickname: 'B', nickname_color: 'red', user_image_url: 'x.png', owner_viewer_id: '1', viewer_ids: ['2', 3] }, anon()),
+      { called_user_name: '***', host_nickname: '***', nickname_color: '***', user_image_url: '***', owner_viewer_id: '***', viewer_ids: ['***', '***'] },
+    )
+  })
+
+  it('ID 欄位的 0、""、"0" 表示「沒有」，原樣保留，不編成代號；名稱類照樣換成 ***', () => {
+    assert.deepEqual(
+      maskValue({ user_id: 0, personal_buff_user_id: '', owner_user_id: '0', user_ids: [0, '5', ''], uid: '0', nickname: '' }, anon()),
+      { user_id: 0, personal_buff_user_id: '', owner_user_id: '0', user_ids: [0, 'p1', ''], uid: '0', nickname: '***' },
+    )
+    assert.equal(maskUrl('/x?uid=0&user_id=&viewer_id=0', anon()), '/x?uid=0&user_id=&viewer_id=***')
   })
 
   it('WebSocket 聊天 chatAdd、raidPost、raidGet 的值整個換成 ***，不論型別', () => {
@@ -307,6 +346,14 @@ describe('遮罩與代號', () => {
       responseData: { user_id: 'p3', member: { user_id: 'p1' }, boss: { hp: 1 } },
     })
     assert.deepEqual(record, frozen)
+  })
+
+  it('responseData 是字串時，能解析成 JSON 就處理後轉回字串；不是 JSON 的字串（例如 HTML）原樣保留', () => {
+    const code = anon()
+    const json = maskRecord({ t: 0, url: '/x', responseData: '{"user_id":"5","nickname":"A","list":[{"user_id":"6"}]}' }, code)
+    assert.equal(json.responseData, '{"user_id":"p1","nickname":"***","list":[{"user_id":"p2"}]}')
+    const html = '<div class="user">user_id=5</div>'
+    assert.equal(maskRecord({ t: 0, url: '/x', responseData: html }, code).responseData, html)
   })
 
   it('maskRecord 對不是 JSON 的 requestData 原樣保留，沒有 requestData 時維持 undefined', () => {

@@ -188,11 +188,14 @@ export function planAppend(
   return { index: list, key, removed }
 }
 
-/** 換成 "***" 的 key（去掉 `_`、轉小寫後比對）；viewer_id 和 user_id 是不同的編號體系，不放進代號對照表 */
-const MASKED_KEYS = new Set(['viewerid', 'nickname', 'username', 'userimage'])
+/** key 去掉 `_`、轉小寫後包含這些字就換成 "***"；viewer_id 和 user_id 是不同的編號體系，不放進代號對照表 */
+const MASKED_KEY_PARTS = ['viewerid', 'nickname', 'username', 'userimage']
 /** 聊天：分析戰鬥用不到，而且有其他玩家的發言，值整個遮掉；commentData、user_comment 是聊天文字的容器，掛在其他 key 底下時也遮 */
 const CHAT_KEYS = new Set(['chatAdd', 'raidPost', 'raidGet', 'commentData', 'user_comment'])
 const MASK = '***'
+
+/** ID 欄位表示「沒有」的值：不是個人資料，原樣保留，不編成代號 */
+const EMPTY_IDS = new Set<unknown>([0, '', '0'])
 
 /** 玩家 ID 換成代號；同一個匯出檔共用一個，才會同一人同一代號 */
 export type IdCoder = (id: string | number) => string
@@ -235,10 +238,11 @@ function maskEntry(key: string, value: unknown, code: IdCoder): unknown {
     return MASK
   const normalized = key.replaceAll('_', '').toLowerCase()
   const isId = normalized === 'uid' || normalized.includes('userid')
-  if (isId || MASKED_KEYS.has(normalized)) {
-    // 只換字串與數字：非個人 buff 的 personal_buff_user_id 是 false，換掉會失去「不是個人 buff」這個資訊
+  if (isId || MASKED_KEY_PARTS.some(part => normalized.includes(part))) {
+    // 只換字串與數字：非個人 buff 的 personal_buff_user_id 是 false，換掉會失去「不是個人 buff」這個資訊；
+    // ID 欄位的 0、""、"0" 同理，表示「沒有」，原樣保留
     if (typeof value === 'string' || typeof value === 'number')
-      return isId ? code(value) : MASK
+      return !isId ? MASK : EMPTY_IDS.has(value) ? value : code(value)
     // 值是陣列時逐一套用同一個 key 的規則：字串與數字換掉，物件照舊往下走訪
     if (Array.isArray(value))
       return value.map(item => maskEntry(key, item, code))
@@ -248,8 +252,8 @@ function maskEntry(key: string, value: unknown, code: IdCoder): unknown {
 
 /**
  * 深層走訪（物件依 key 的順序、深度優先），回傳新物件，不修改傳入的值：
- * - key 去掉 `_`、轉小寫後包含 userid 或等於 uid：值是字串或數字時換成代號
- * - key 去掉 `_`、轉小寫後等於 viewerid、nickname、username、userimage：值是字串或數字時換成 "***"
+ * - key 去掉 `_`、轉小寫後包含 userid 或等於 uid：值是字串或數字時換成代號；0、""、"0" 原樣保留
+ * - key 去掉 `_`、轉小寫後包含 viewerid、nickname、username、userimage：值是字串或數字時換成 "***"
  * - 上面兩種 key 的值是陣列時，陣列裡的字串與數字照同樣規則換掉
  * - key 是 chatAdd、raidPost、raidGet、commentData、user_comment：值整個換成 "***"
  */
@@ -261,25 +265,32 @@ export function maskValue(value: unknown, code: IdCoder): unknown {
   return value
 }
 
-/** URL 查詢參數 uid、user_id 的值換成代號，viewer_id 換成 "***" */
+/** URL 查詢參數 uid、user_id 的值換成代號（空字串與 "0" 原樣保留），viewer_id 換成 "***" */
 export function maskUrl(url: string, code: IdCoder): string {
-  return url.replace(/([?&])(uid|user_id|viewer_id)=([^&#]*)/g, (_match, sep: string, name: string, id: string) => `${sep}${name}=${name === 'viewer_id' ? MASK : code(id)}`)
+  return url.replace(/([?&])(uid|user_id|viewer_id)=([^&#]*)/g, (_match, sep: string, name: string, id: string) =>
+    `${sep}${name}=${name === 'viewer_id' ? MASK : EMPTY_IDS.has(id) ? id : code(id)}`)
+}
+
+/** 字串能解析成 JSON 時，解析、處理後再轉回字串；不是 JSON 的字串原樣保留 */
+function maskJsonString(text: string, code: IdCoder): string {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  }
+  catch {
+    return text
+  }
+  return JSON.stringify(maskValue(parsed, code))
 }
 
 /**
  * 匯出用的遮罩：依 URL、requestData、responseData 的順序處理，代號照這個順序編。
- * requestData 解析後遮罩再轉回字串，不是 JSON 的字串與 null 原樣保留
+ * requestData、responseData 是字串時，能解析成 JSON 就解析、處理後再轉回字串；不是 JSON 的字串（例如 HTML）與 null 原樣保留
  */
 export function maskRecord(record: RecRecord, code: IdCoder): RecRecord {
   const url = maskUrl(record.url, code)
-  let requestData = record.requestData
-  if (typeof requestData === 'string') {
-    try {
-      requestData = JSON.stringify(maskValue(JSON.parse(requestData), code))
-    }
-    catch {}
-  }
-  const responseData = maskValue(record.responseData, code)
+  const requestData = typeof record.requestData === 'string' ? maskJsonString(record.requestData, code) : record.requestData
+  const responseData = typeof record.responseData === 'string' ? maskJsonString(record.responseData, code) : maskValue(record.responseData, code)
   return { ...record, url, requestData, responseData }
 }
 

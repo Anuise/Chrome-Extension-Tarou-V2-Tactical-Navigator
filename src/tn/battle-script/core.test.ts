@@ -1,5 +1,5 @@
 import type { BattleScript, BattleScriptCondition, BattleScriptRule } from 'tn'
-import type { BattleSnapshot } from './core'
+import type { BattleSnapshot, SnapshotTurn } from './core'
 import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { describe, it } from 'node:test'
@@ -31,6 +31,20 @@ function errorLocations(input: unknown) {
     assert.fail('預期驗證失敗')
   return result.errors.map(({ ruleIndex, path }) => ({ ruleIndex, path }))
 }
+
+/** 規則的條件依序為 whens 的腳本：驗證必須失敗，回傳每個 error 的路徑與說明 */
+function conditionErrors(...whens: unknown[]) {
+  const result = validateScript({ ...fullScript(), rules: whens.map(when => ({ note: '條件', when, advice: [] })) })
+  if (result.ok)
+    assert.fail('預期驗證失敗')
+  return result.errors.map(({ path, message }) => [path, message])
+}
+
+// validateScript 的錯誤說明
+const TEXT = '必須是非空字串'
+const RANGE = '必須是兩個數字的區間，例如 [15, 50]'
+const BOOL = '必須是 true 或 false'
+const SLOT = '必須是 1–4 的整數'
 
 describe('validateScript', () => {
   it('合法腳本通過驗證，回傳內容相同的腳本', () => {
@@ -164,6 +178,141 @@ describe('validateScript', () => {
       { ruleIndex: 0, path: 'rules[0].advice[0].target' },
     ])
   })
+
+  it('新條件的合法寫法通過驗證：單一物件或陣列、巢狀 not、含 {n} 的 omen', () => {
+    const rules = [
+      { note: '預兆數字', when: { omen: '{n}ヒット', omenNum: [0, 40] }, advice: [] },
+      { note: '只比格式', when: { omen: '{n}ダメージ' }, advice: [] },
+      {
+        note: '全部新條件',
+        when: {
+          not: { not: { bossBuff: '4055_1' } },
+          ally: [{ who: '主角', dead: false, front: true }, { who: '3040390000', buff: '7349_', stack: [7, 10], remain: [1, 3] }],
+          ability: { who: '3040617000', slot: 3, ready: true, recast: [0, 0], used: [0, 1] },
+          summon: [{ id: '2040080000', from: 'friend', ready: true }, { id: '2040094000', recast: [0, 2], used: [0, 0] }],
+          chain: [77, 100],
+          chainUsed: false,
+          lastTurn: { fc: true, guard: '3040617000', attack: '主角', omen: 'フェイタルチェイン' },
+          seenOmen: 'アビダメ',
+          turnStartHp: [15, 16],
+        },
+        advice: [],
+      },
+    ]
+    const input = { ...fullScript(), rules }
+
+    assert.deepEqual(validateScript(input), { ok: true, script: input })
+  })
+
+  it('omenNum 必須和含 {n} 的 omen 一起寫；omen 裡的 {n} 只能有一個', () => {
+    assert.deepEqual(conditionErrors(
+      { omenNum: [0, 40] },
+      { omen: 'ヒット', omenNum: [0, 40] },
+      { omen: '{n}万ダメ{n}ヒット' },
+      { omen: '{n}ヒット', omenNum: 40 },
+    ), [
+      ['rules[0].when.omenNum', '必須和含 {n} 的 omen 一起寫'],
+      ['rules[1].when.omenNum', '必須和含 {n} 的 omen 一起寫'],
+      ['rules[2].when.omen', '只能有一個 {n}'],
+      ['rules[3].when.omenNum', RANGE],
+    ])
+  })
+
+  it('not 裡照同一套規則驗證，錯誤路徑接在 not 之後；not 是空物件時回報 error：加上 not 之後恆不成立', () => {
+    assert.deepEqual(conditionErrors(
+      { not: {} },
+      { not: { not: {} } },
+      { not: { hpp: [0, 50], ability: { who: '主角', slot: 5 } } },
+      { not: [] },
+    ), [
+      ['rules[0].when.not', '不能是空物件'],
+      ['rules[1].when.not.not', '不能是空物件'],
+      ['rules[2].when.not.hpp', '未知的欄位'],
+      ['rules[2].when.not.ability.slot', SLOT],
+      ['rules[3].when.not', '必須是物件'],
+    ])
+  })
+
+  it('ally 的錯誤指向該項；stack、remain 必須和 buff 一起寫；空陣列回報 error', () => {
+    assert.deepEqual(conditionErrors(
+      { ally: [{ who: '' }, { who: '3040390000', stack: [7, 10], remain: [1, 3] }] },
+      { ally: { buff: '', stack: 7, remain: [1], dead: 'true', front: 1, target: 'boss' } },
+      { ally: [] },
+      { ally: ['主角'] },
+    ), [
+      ['rules[0].when.ally[0].who', TEXT],
+      ['rules[0].when.ally[1].stack', '必須和 buff 一起寫'],
+      ['rules[0].when.ally[1].remain', '必須和 buff 一起寫'],
+      ['rules[1].when.ally.who', '缺少必要欄位'],
+      ['rules[1].when.ally.target', '未知的欄位'],
+      ['rules[1].when.ally.buff', TEXT],
+      ['rules[1].when.ally.stack', RANGE],
+      ['rules[1].when.ally.remain', RANGE],
+      ['rules[1].when.ally.dead', BOOL],
+      ['rules[1].when.ally.front', BOOL],
+      ['rules[2].when.ally', '至少要有一項'],
+      ['rules[3].when.ally[0]', '必須是物件'],
+    ])
+  })
+
+  it('ability 缺少 who 或 slot、slot 不是 1–4 的整數、欄位型別錯誤時回報 error；空陣列回報 error', () => {
+    assert.deepEqual(conditionErrors(
+      { ability: { ready: 'true', recast: 0, used: [1], skill: 'ディスペル' } },
+      { ability: [{ who: '主角', slot: 0 }, { who: '主角', slot: 5 }, { who: '主角', slot: 1.5 }, { who: '', slot: '1' }] },
+      { ability: [] },
+    ), [
+      ['rules[0].when.ability.who', '缺少必要欄位'],
+      ['rules[0].when.ability.slot', '缺少必要欄位'],
+      ['rules[0].when.ability.skill', '未知的欄位'],
+      ['rules[0].when.ability.ready', BOOL],
+      ['rules[0].when.ability.recast', RANGE],
+      ['rules[0].when.ability.used', RANGE],
+      ['rules[1].when.ability[0].slot', SLOT],
+      ['rules[1].when.ability[1].slot', SLOT],
+      ['rules[1].when.ability[2].slot', SLOT],
+      ['rules[1].when.ability[3].who', TEXT],
+      ['rules[1].when.ability[3].slot', SLOT],
+      ['rules[2].when.ability', '至少要有一項'],
+    ])
+  })
+
+  it('summon 缺少 id、from 不是 main／sub／friend、欄位型別錯誤時回報 error；空陣列回報 error', () => {
+    assert.deepEqual(conditionErrors(
+      { summon: { from: 'support', ready: 1, recast: [0], used: '0', name: 'ゼウス' } },
+      { summon: [{ id: '' }, { id: '2040080000', from: 'main' }] },
+      { summon: [] },
+    ), [
+      ['rules[0].when.summon.id', '缺少必要欄位'],
+      ['rules[0].when.summon.name', '未知的欄位'],
+      ['rules[0].when.summon.from', '必須是 "main"、"sub" 或 "friend"'],
+      ['rules[0].when.summon.ready', BOOL],
+      ['rules[0].when.summon.recast', RANGE],
+      ['rules[0].when.summon.used', RANGE],
+      ['rules[1].when.summon[0].id', TEXT],
+      ['rules[2].when.summon', '至少要有一項'],
+    ])
+  })
+
+  it('lastTurn 是空物件或欄位型別錯誤時回報 error；chain、chainUsed、seenOmen、turnStartHp 型別錯誤時回報 error', () => {
+    assert.deepEqual(conditionErrors(
+      { lastTurn: {} },
+      { lastTurn: { fc: 'yes', guard: '', attack: 3040617000, omen: '', ougi: true } },
+      { lastTurn: 'fc' },
+      { chain: 77, chainUsed: 'true', seenOmen: '', turnStartHp: [15] },
+    ), [
+      ['rules[0].when.lastTurn', '至少要寫一個欄位'],
+      ['rules[1].when.lastTurn.ougi', '未知的欄位'],
+      ['rules[1].when.lastTurn.fc', BOOL],
+      ['rules[1].when.lastTurn.guard', TEXT],
+      ['rules[1].when.lastTurn.attack', TEXT],
+      ['rules[1].when.lastTurn.omen', TEXT],
+      ['rules[2].when.lastTurn', '必須是物件'],
+      ['rules[3].when.chain', RANGE],
+      ['rules[3].when.chainUsed', BOOL],
+      ['rules[3].when.seenOmen', TEXT],
+      ['rules[3].when.turnStartHp', RANGE],
+    ])
+  })
 })
 
 /** 顕現戰第 3 回合：HP 49.5%、破壞之力 70、預兆「浄土|破壊」，boss 身上有 1001_1 與 4052_1 */
@@ -175,6 +324,10 @@ const snapshot: BattleSnapshot = {
   gauge: 70,
   omenText: '浄土|破壊',
   bossBuffStatuses: ['1001_1', '4052_1'],
+  allies: [],
+  summons: [],
+  chainUsed: false,
+  history: [],
 }
 
 function rule(note: string, when: BattleScriptCondition = {}): BattleScriptRule {
@@ -275,7 +428,7 @@ describe('selectAdvice', () => {
   })
 
   it('不在戰鬥中時不拋錯，也沒有相符腳本', () => {
-    const notInBattle: BattleSnapshot = { battleCount: 1, omenText: '', bossBuffStatuses: [] }
+    const notInBattle: BattleSnapshot = { battleCount: 1, omenText: '', bossBuffStatuses: [], allies: [], summons: [], chainUsed: false, history: [] }
 
     assert.deepEqual(selectAdvice([script([rule('開場')])], notInBattle), {
       matchedScripts: [],
@@ -323,5 +476,294 @@ describe('selectAdvice', () => {
     const after = [before[0], script([rule('再生版 v2')], { name: '再生神意版' })]
 
     assert.deepEqual(selectAdvice(after, snapshot, key).activeRules.map(r => r.note), ['再生版 v2'])
+  })
+})
+
+const UNI = '3040390000'
+const DOG = '3040617000'
+const BACK_ROW = '3040111000'
+const ZEUS = '2040080000'
+const SUB_SUMMON = '2040094000'
+
+/**
+ * 同一場戰鬥的完整 snapshot（第 3 回合）：
+ * - 主角：技能 1 可用、技能 2 冷卻 3 回合、技能 3 不知道能不能按；
+ * - 尤妮：兩個 7349 buff（7 層沒有剩餘回合、3 層剩 2 回合）與一個沒有層數的 1000；
+ * - 狗在前排陣亡，另一人在後排；
+ * - 召喚石：主召與好友都是宙斯（主召冷卻中、好友可用），副召不知道能不能召喚；
+ * - 上一回合（第 2 回合）：尤妮與已不在隊伍中的角色防禦，有放 FC 與普攻。
+ */
+const full: BattleSnapshot = {
+  ...snapshot,
+  allies: [
+    {
+      id: '360001',
+      isLeader: true,
+      front: true,
+      dead: false,
+      buffs: [{ status: '2001_10' }],
+      abilities: [
+        { slot: 1, abilityId: '1', ready: true, recast: 0, used: 1 },
+        { slot: 2, abilityId: '2', ready: false, recast: 3, used: 0 },
+        { slot: 3, abilityId: '3', used: 0 },
+      ],
+    },
+    {
+      id: UNI,
+      isLeader: false,
+      front: true,
+      dead: false,
+      buffs: [{ status: '7349_7' }, { status: '7349_3', remain: 2 }, { status: '1000', remain: 1 }],
+      abilities: [{ slot: 2, abilityId: '4', ready: true, recast: 0, used: 2 }],
+    },
+    { id: DOG, isLeader: false, front: true, dead: true, buffs: [], abilities: [] },
+    { id: BACK_ROW, isLeader: false, front: false, dead: false, buffs: [], abilities: [] },
+  ],
+  summons: [
+    { from: 'main', id: ZEUS, ready: false, recast: 5, used: 1 },
+    { from: 'sub', id: SUB_SUMMON, used: 0 },
+    { from: 'friend', id: ZEUS, ready: true, recast: 0, used: 0 },
+  ],
+  chain: 77,
+  chainUsed: false,
+  history: [
+    { turn: 1, hpAtStart: 100, omenText: 'アビダメ', guards: [], actions: [] },
+    {
+      turn: 2,
+      hpAtStart: 70,
+      omenText: 'フェイタルチェイン',
+      guards: [UNI, '3999999000'],
+      actions: [{ type: 'ability', id: '1' }, { type: 'fc' }, { type: 'attack' }],
+    },
+    { turn: 3, hpAtStart: 55, omenText: '浄土|破壊', guards: [], actions: [] },
+  ],
+}
+
+/** 上一回合（第 2 回合）換成 previous 之後的 full */
+function withPreviousTurn(previous: Partial<SnapshotTurn>): BattleSnapshot {
+  const [first, second, current] = full.history
+  return { ...full, history: [first, { ...second, ...previous }, current] }
+}
+
+describe('selectAdvice 的新條件', () => {
+  it('omen 沒有 {n} 時行為不變：對整串預兆做子字串比對', () => {
+    assert.equal(holds({ omen: '浄土|破壊' }), true)
+    assert.equal(holds({ omen: '土|破' }), true)
+  })
+
+  it('omen 含 {n} 時取出預兆裡的數字，落在 omenNum 區間內才成立；數字去掉逗號再比對', () => {
+    const hits = { ...snapshot, omenText: '浄土|30ヒット' }
+    const damage = { ...snapshot, omenText: '100,000,000ダメージ' }
+
+    assert.equal(holds({ omen: '{n}ヒット', omenNum: [0, 40] }, hits), true)
+    assert.equal(holds({ omen: '{n}ヒット', omenNum: [30, 30] }, hits), true)
+    assert.equal(holds({ omen: '{n}ヒット', omenNum: [31, 40] }, hits), false)
+    assert.equal(holds({ omen: '{n}ダメージ', omenNum: [100_000_000, 100_000_000] }, damage), true)
+    assert.equal(holds({ omen: '{n}ダメージ', omenNum: [0, 100] }, damage), false)
+  })
+
+  it('omen 含 {n} 時，一段預兆裡有兩個數字，只取符合格式的那一個', () => {
+    const battle = { ...snapshot, omenText: '600万ダメ5ヒット' }
+
+    assert.equal(holds({ omen: '{n}ヒット', omenNum: [5, 5] }, battle), true)
+    assert.equal(holds({ omen: '{n}ヒット', omenNum: [600, 600] }, battle), false)
+    assert.equal(holds({ omen: '{n}万ダメ', omenNum: [600, 600] }, battle), true)
+  })
+
+  it('omen 含 {n} 時對以 | 分開的每一段比對，任一段符合即成立', () => {
+    const battle = { ...snapshot, omenText: '50ヒット|30ヒット' }
+
+    assert.equal(holds({ omen: '{n}ヒット', omenNum: [0, 40] }, battle), true)
+    assert.equal(holds({ omen: '{n}ヒット', omenNum: [41, 49] }, battle), false)
+    // 每一段都不含 |，所以格式不能跨段
+    assert.equal(holds({ omen: '{n}|30' }, battle), false)
+  })
+
+  it('omen 含 {n}、沒寫 omenNum 時只要求格式符合，數字不限；沒有預兆時不成立', () => {
+    assert.equal(holds({ omen: '{n}ヒット' }, { ...snapshot, omenText: '999ヒット' }), true)
+    assert.equal(holds({ omen: '{n}ヒット' }, { ...snapshot, omenText: 'ヒット' }), false)
+    assert.equal(holds({ omen: '{n}ヒット' }, { ...snapshot, omenText: '' }), false)
+  })
+
+  it('{n} 的數字必須以數字開頭；omen 的其餘字元照字面比對，不當作正規表示式', () => {
+    assert.equal(holds({ omen: '{n}ダメージ' }, { ...snapshot, omenText: ',ダメージ' }), false)
+    assert.equal(holds({ omen: '({n}回)', omenNum: [3, 3] }, { ...snapshot, omenText: '連続攻撃(3回)' }), true)
+    assert.equal(holds({ omen: '.{n}' }, { ...snapshot, omenText: 'a3' }), false)
+  })
+
+  it('not 裡的條件不成立時成立，可以巢狀', () => {
+    assert.equal(holds({ not: { bossBuff: '4052' } }), false)
+    assert.equal(holds({ not: { bossBuff: '9999' } }), true)
+    assert.equal(holds({ not: { turn: 3, bossBuff: '9999' } }), true)
+    assert.equal(holds({ not: { not: { bossBuff: '4052' } } }), true)
+  })
+
+  it('not 包住沒有值的條件時成立', () => {
+    assert.equal(holds({ not: { chain: [0, 100] } }), true)
+    assert.equal(holds({ not: { ally: { who: '主角' } } }), true)
+  })
+
+  it('ally 的 who 寫「主角」時對到主角，其他字串對到角色 ID；找不到角色時不成立', () => {
+    assert.equal(holds({ ally: { who: '主角' } }, full), true)
+    assert.equal(holds({ ally: { who: UNI } }, full), true)
+    assert.equal(holds({ ally: { who: '3999999000' } }, full), false)
+    assert.equal(holds({ ally: { who: '主角' } }), false)
+  })
+
+  it('ally 的 dead、front 要和角色狀態相等', () => {
+    assert.equal(holds({ ally: { who: DOG, dead: true, front: true } }, full), true)
+    assert.equal(holds({ ally: { who: DOG, dead: false } }, full), false)
+    assert.equal(holds({ ally: { who: BACK_ROW, front: false } }, full), true)
+    assert.equal(holds({ ally: { who: BACK_ROW, front: true } }, full), false)
+  })
+
+  it('ally 的 buff 是該角色任一個 buff status 的前綴時成立', () => {
+    assert.equal(holds({ ally: { who: UNI, buff: '7349' } }, full), true)
+    assert.equal(holds({ ally: { who: UNI, buff: '349' } }, full), false)
+    assert.equal(holds({ ally: { who: '主角', buff: '7349' } }, full), false)
+  })
+
+  it('ally 的 stack 取 buff 前綴與開頭一個 _ 之後的數字；取不到數字時不成立', () => {
+    assert.equal(holds({ ally: { who: UNI, buff: '7349', stack: [7, 10] } }, full), true)
+    assert.equal(holds({ ally: { who: UNI, buff: '7349_', stack: [7, 7] } }, full), true)
+    assert.equal(holds({ ally: { who: UNI, buff: '7349', stack: [8, 10] } }, full), false)
+    assert.equal(holds({ ally: { who: '主角', buff: '2001', stack: [10, 10] } }, full), true)
+    assert.equal(holds({ ally: { who: UNI, buff: '1000', stack: [0, 99] } }, full), false)
+  })
+
+  it('ally 的 remain 比對 buff 的剩餘回合，沒有值時不成立；stack 與 remain 必須由同一個 buff 滿足', () => {
+    assert.equal(holds({ ally: { who: UNI, buff: '1000', remain: [1, 1] } }, full), true)
+    assert.equal(holds({ ally: { who: '主角', buff: '2001', remain: [0, 99] } }, full), false)
+    assert.equal(holds({ ally: { who: UNI, buff: '7349', stack: [3, 3], remain: [2, 2] } }, full), true)
+    assert.equal(holds({ ally: { who: UNI, buff: '7349', stack: [7, 7], remain: [2, 2] } }, full), false)
+  })
+
+  it('ally 寫成陣列時每一項都要成立', () => {
+    assert.equal(holds({ ally: [{ who: '主角', dead: false }, { who: UNI, buff: '7349' }] }, full), true)
+    assert.equal(holds({ ally: [{ who: '主角', dead: false }, { who: UNI, buff: '9999' }] }, full), false)
+  })
+
+  it('ability 的 ready 要和技能狀態相等；不知道能不能按時，不論寫 true 或 false 都不成立', () => {
+    assert.equal(holds({ ability: { who: '主角', slot: 1, ready: true } }, full), true)
+    assert.equal(holds({ ability: { who: '主角', slot: 1, ready: false } }, full), false)
+    assert.equal(holds({ ability: { who: '主角', slot: 2, ready: false } }, full), true)
+    assert.equal(holds({ ability: { who: '主角', slot: 3, ready: true } }, full), false)
+    assert.equal(holds({ ability: { who: '主角', slot: 3, ready: false } }, full), false)
+  })
+
+  it('ability 的 recast、used 比對區間；recast 沒有值時不成立', () => {
+    assert.equal(holds({ ability: { who: '主角', slot: 2, recast: [1, 3] } }, full), true)
+    assert.equal(holds({ ability: { who: '主角', slot: 2, recast: [0, 2] } }, full), false)
+    assert.equal(holds({ ability: { who: '主角', slot: 3, recast: [0, 99] } }, full), false)
+    assert.equal(holds({ ability: { who: '主角', slot: 1, used: [1, 99] } }, full), true)
+    assert.equal(holds({ ability: { who: '主角', slot: 2, used: [1, 99] } }, full), false)
+  })
+
+  it('ability 找不到角色或技能格時不成立；只寫 who 與 slot 時找得到就成立', () => {
+    assert.equal(holds({ ability: { who: UNI, slot: 2 } }, full), true)
+    assert.equal(holds({ ability: { who: UNI, slot: 4 } }, full), false)
+    assert.equal(holds({ ability: { who: '3999999000', slot: 1 } }, full), false)
+  })
+
+  it('ability 寫成陣列時每一項都要成立', () => {
+    assert.equal(holds({ ability: [{ who: '主角', slot: 1, ready: true }, { who: UNI, slot: 2, ready: true }] }, full), true)
+    assert.equal(holds({ ability: [{ who: '主角', slot: 1, ready: true }, { who: '主角', slot: 2, ready: true }] }, full), false)
+  })
+
+  it('summon 符合 id 的召喚石不只一張時，任一張滿足全部有寫的欄位即成立', () => {
+    assert.equal(holds({ summon: { id: ZEUS, ready: true } }, full), true)
+    assert.equal(holds({ summon: { id: ZEUS, recast: [5, 5], used: [1, 1] } }, full), true)
+    // 好友可用但沒召喚過、主召召喚過但不可用：沒有一張同時滿足
+    assert.equal(holds({ summon: { id: ZEUS, ready: true, used: [1, 1] } }, full), false)
+  })
+
+  it('summon 寫了 from 時只比對該位置的召喚石', () => {
+    assert.equal(holds({ summon: { id: ZEUS, from: 'friend', ready: true } }, full), true)
+    assert.equal(holds({ summon: { id: ZEUS, from: 'main', ready: true } }, full), false)
+    assert.equal(holds({ summon: { id: ZEUS, from: 'sub' } }, full), false)
+  })
+
+  it('summon 找不到召喚石，或 ready、recast 沒有值時不成立', () => {
+    assert.equal(holds({ summon: { id: '2040999000' } }, full), false)
+    assert.equal(holds({ summon: { id: SUB_SUMMON, ready: true } }, full), false)
+    assert.equal(holds({ summon: { id: SUB_SUMMON, ready: false } }, full), false)
+    assert.equal(holds({ summon: { id: SUB_SUMMON, recast: [0, 99] } }, full), false)
+    assert.equal(holds({ summon: { id: SUB_SUMMON, used: [0, 0] } }, full), true)
+  })
+
+  it('summon 寫成陣列時每一項都要成立', () => {
+    assert.equal(holds({ summon: [{ id: ZEUS, from: 'friend', ready: true }, { id: SUB_SUMMON }] }, full), true)
+    assert.equal(holds({ summon: [{ id: ZEUS, from: 'friend', ready: true }, { id: ZEUS, from: 'main', ready: true }] }, full), false)
+  })
+
+  it('chain 區間比對連鎖條，沒有值時不成立；chainUsed 要和是否發動過連鎖技能相等', () => {
+    assert.equal(holds({ chain: [77, 100] }, full), true)
+    assert.equal(holds({ chain: [0, 76] }, full), false)
+    assert.equal(holds({ chain: [0, 100] }), false)
+    assert.equal(holds({ chainUsed: false }, full), true)
+    assert.equal(holds({ chainUsed: true }, full), false)
+    assert.equal(holds({ chainUsed: true }, { ...full, chainUsed: true }), true)
+  })
+
+  it('lastTurn 看倒數第二筆歷史；只有目前回合或沒有歷史時不成立', () => {
+    assert.equal(holds({ lastTurn: { fc: true } }, full), true)
+    assert.equal(holds({ lastTurn: { fc: false } }, { ...full, history: full.history.slice(0, 1) }), false)
+    assert.equal(holds({ lastTurn: { fc: false } }, { ...full, history: [] }), false)
+  })
+
+  it('lastTurn 的 fc 要和上一回合有沒有放 FC 相等', () => {
+    assert.equal(holds({ lastTurn: { fc: true } }, full), true)
+    assert.equal(holds({ lastTurn: { fc: false } }, full), false)
+    assert.equal(holds({ lastTurn: { fc: false } }, withPreviousTurn({ actions: [{ type: 'attack' }] })), true)
+  })
+
+  it('lastTurn 的 guard：該角色在上一回合防禦時成立；who 對不到角色時不成立', () => {
+    assert.equal(holds({ lastTurn: { guard: UNI } }, full), true)
+    assert.equal(holds({ lastTurn: { guard: '主角' } }, full), false)
+    assert.equal(holds({ lastTurn: { guard: '主角' } }, withPreviousTurn({ guards: ['360001'] })), true)
+    assert.equal(holds({ lastTurn: { guard: '3999999000' } }, full), false)
+  })
+
+  it('lastTurn 的 attack：上一回合有普攻、而且該角色沒有防禦時成立；who 對不到角色時不成立', () => {
+    assert.equal(holds({ lastTurn: { attack: '主角' } }, full), true)
+    assert.equal(holds({ lastTurn: { attack: UNI } }, full), false)
+    assert.equal(holds({ lastTurn: { attack: '主角' } }, withPreviousTurn({ actions: [{ type: 'fc' }] })), false)
+    assert.equal(holds({ lastTurn: { attack: '3888888000' } }, full), false)
+  })
+
+  it('lastTurn 的 omen 只比對上一回合的預兆，不看目前與更早的回合', () => {
+    assert.equal(holds({ lastTurn: { omen: 'フェイタル' } }, full), true)
+    assert.equal(holds({ lastTurn: { omen: '浄土' } }, full), false)
+    assert.equal(holds({ lastTurn: { omen: 'アビダメ' } }, full), false)
+  })
+
+  it('seenOmen 比對本場任一回合與目前的預兆', () => {
+    assert.equal(holds({ seenOmen: 'アビダメ' }, full), true)
+    assert.equal(holds({ seenOmen: 'フェイタル' }, full), true)
+    assert.equal(holds({ seenOmen: '再生' }, full), false)
+    // 沒有歷史時仍比對目前的預兆
+    assert.equal(holds({ seenOmen: '破壊' }), true)
+  })
+
+  it('turnStartHp 比對最後一筆歷史的回合開始 HP；沒有歷史或沒記到時不成立', () => {
+    assert.equal(holds({ turnStartHp: [50, 60] }, full), true)
+    assert.equal(holds({ turnStartHp: [70, 70] }, full), false)
+    assert.equal(holds({ turnStartHp: [0, 100] }), false)
+    assert.equal(holds({ turnStartHp: [0, 100] }, { ...full, history: [{ ...full.history[2], hpAtStart: undefined }] }), false)
+  })
+
+  it('新條件與既有條件全部成立才成立（AND）', () => {
+    const when: BattleScriptCondition = {
+      turn: 3,
+      ally: { who: UNI, buff: '7349', stack: [7, 10] },
+      ability: { who: '主角', slot: 1, ready: true },
+      summon: { id: ZEUS, from: 'friend', ready: true },
+      lastTurn: { fc: true },
+      not: { chainUsed: true },
+    }
+
+    assert.equal(holds(when, full), true)
+    assert.equal(holds({ ...when, chain: [0, 50] }, full), false)
+    assert.equal(holds({ ...when, ability: { who: '主角', slot: 2, ready: true } }, full), false)
   })
 })

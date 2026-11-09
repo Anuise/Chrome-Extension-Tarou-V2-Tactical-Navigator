@@ -1,4 +1,5 @@
 import { handleBattleState } from '~/tn/battle-state/background'
+import { recordParcel, setupRecorderWebSocket } from '~/tn/recorder/store'
 
 /** 內容腳本送來的 AJAX 回應，結構與 upstream `unpack` 解析的物件相同 */
 export interface TnParcel {
@@ -36,6 +37,7 @@ export function dispatchParcel(parcel: unknown, handlers: ((parcel: TnParcel) =>
 
 // 後續票各在這裡加一個 import 和一個項目
 const handlers: ((parcel: TnParcel) => void)[] = [
+  recordParcel,
   handleBattleState,
 ]
 
@@ -45,4 +47,6 @@ export function tnUnpack(parcel: unknown): void {
 }
 
 /** tn 的 Chrome 原生事件監聽（`chrome.webRequest`、`chrome.contextMenus` 等）都放這裡（RULES §3） */
-export function setupTnBackground(): void {}
+export function setupTnBackground(): void {
+  setupRecorderWebSocket()
+}

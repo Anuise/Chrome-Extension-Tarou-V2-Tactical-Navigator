@@ -6,7 +6,7 @@ import dayjs from 'dayjs'
 export interface RecRecord {
   t: number
   url: string
-  requestData?: unknown
+  requestData?: string | null
   responseData?: unknown
 }
 
@@ -16,7 +16,7 @@ export interface RecIndexEntry {
   /** start.json 的 quest_id；錄到 start.json 之前沒有 */
   questId?: string
   startedAt: number
-  /** 最後一次收到這場的資料（含截斷後略過的），用來判斷哪一場是「最近一場」 */
+  /** 最後一次收到這場的資料（含截斷後略過的），用來判斷哪一場是「最近一場」，以及超過上限時先刪哪一場 */
   lastAt: number
   count: number
   bytes: number
@@ -29,6 +29,8 @@ export interface RecLimits {
   maxBytes: number
 }
 
+// 依賴 manifest 的 unlimitedStorage：沒有這個權限時 chrome.storage.local 只有 10 MB 且和 upstream 共用，
+// 錄一場就會把配額用完，upstream 的寫入跟著失敗（同步 upstream 時的檢查見 RULES §7）
 export const REC_LIMITS: RecLimits = { maxRaids: 3, maxBytes: 50 * 1024 * 1024 }
 
 export const REC_ENABLED_KEY = 'tn:rec:enabled'
@@ -54,10 +56,10 @@ export function byteLength(record: RecRecord): number {
   return new TextEncoder().encode(JSON.stringify(record)).length
 }
 
-/** requestData 是 JSON 字串時回傳解析結果，否則原樣回傳；解析失敗回傳 undefined */
-function parseRequestData(requestData: unknown): unknown {
+/** requestData 的解析結果；不是字串（沒有 requestData，或 jQuery 的 data 是 null）或不是 JSON 時回傳 undefined */
+function parseRequestData(requestData: string | null | undefined): unknown {
   if (typeof requestData !== 'string')
-    return requestData
+    return undefined
   try {
     return JSON.parse(requestData)
   }
@@ -99,11 +101,16 @@ export function resolveRaidId(record: RecRecord): { raidId: string, source: Raid
   return undefined
 }
 
-/** 這筆該歸到哪一場：紀錄本身判斷不出來時，歸到最後收到資料的那一場；索引是空的回傳 undefined */
+/**
+ * 這筆該歸到哪一場，回傳 undefined 表示不錄（索引是空的）。
+ * - requestData、responseData 的 raid_id 可以建立新的一場
+ * - URL 路徑取到的數字只能對到索引裡已有的場次：路徑裡的長數字可能是角色 ID 等其他 ID，建新場會把正在錄的場次擠掉
+ * - 其他情況歸到最後收到資料的那一場
+ */
 export function raidIdOf(record: RecRecord, index: readonly RecIndexEntry[]): string | undefined {
-  const resolved = resolveRaidId(record)?.raidId
-  if (resolved)
-    return resolved
+  const resolved = resolveRaidId(record)
+  if (resolved && (resolved.source !== 'url' || index.some(e => e.raidId === resolved.raidId)))
+    return resolved.raidId
   let latest: RecIndexEntry | undefined
   for (const entry of index) {
     if (!latest || entry.lastAt >= latest.lastAt)
@@ -112,9 +119,11 @@ export function raidIdOf(record: RecRecord, index: readonly RecIndexEntry[]): st
   return latest?.raidId
 }
 
+const START_JSON = /\/rest\/(?:raid|multiraid)\/start\.json/
+
 /** start.json 回應的 quest_id */
 export function questIdOf(record: RecRecord): string | undefined {
-  if (!/\/rest\/(?:raid|multiraid)\/start\.json/.test(record.url))
+  if (!START_JSON.test(record.url))
     return undefined
   const questId = (record.responseData as Record<string, unknown> | undefined)?.quest_id
   return questId === undefined || questId === null || questId === '' ? undefined : String(questId)
@@ -133,7 +142,8 @@ export interface AppendPlan {
  * - 新的一場接在索引最後
  * - 這場已截斷：不寫入
  * - 這場加上這筆會超過 maxBytes：標記截斷，不寫入
- * - 寫入後場數超過 maxRaids 或總量超過 maxBytes：由最舊的一場開始刪，不刪這一場
+ * - 寫入後場數超過 maxRaids 或總量超過 maxBytes：由 lastAt 最小（最久沒收到資料）的一場開始刪，不刪這一場；
+ *   lastAt 相同時先刪索引裡排前面（較早開始）的
  */
 export function planAppend(
   index: readonly RecIndexEntry[],
@@ -166,54 +176,132 @@ export function planAppend(
   const removed: RecIndexEntry[] = []
   const total = () => list.reduce((sum, e) => sum + e.bytes, 0)
   while (list.length > limits.maxRaids || total() > limits.maxBytes) {
-    const oldest = list.find(e => e !== entry)
+    const others = list.filter(e => e !== entry)
     // 只剩這一場時，它單獨不會超過 maxBytes（超過的話上面已標記截斷而沒寫入）
-    if (!oldest)
+    if (others.length === 0)
       break
-    removed.push(oldest)
-    list = list.filter(e => e !== oldest)
+    const stalest = others.reduce((a, b) => b.lastAt < a.lastAt ? b : a)
+    removed.push(stalest)
+    list = list.filter(e => e !== stalest)
   }
 
   return { index: list, key, removed }
 }
 
-const MASKED_KEYS = new Set(['user_id', 'viewer_id', 'nickname'])
+/** key 去掉 `_`、轉小寫後包含這些字就換成 "***"；viewer_id 和 user_id 是不同的編號體系，不放進代號對照表 */
+const MASKED_KEY_PARTS = ['viewerid', 'nickname', 'username', 'userimage']
+/** 聊天：分析戰鬥用不到，而且有其他玩家的發言，值整個遮掉；commentData、user_comment 是聊天文字的容器，掛在其他 key 底下時也遮 */
+const CHAT_KEYS = new Set(['chatAdd', 'raidPost', 'raidGet', 'commentData', 'user_comment'])
 const MASK = '***'
 
-/** 深層走訪，key 是 user_id、viewer_id、nickname 的值換成 "***"；回傳新物件，不修改傳入的值 */
-export function maskValue(value: unknown): unknown {
+/** ID 欄位表示「沒有」的值：不是個人資料，原樣保留，不編成代號 */
+const EMPTY_IDS = new Set<unknown>([0, '', '0'])
+
+/** 玩家 ID 換成代號；同一個匯出檔共用一個，才會同一人同一代號 */
+export type IdCoder = (id: string | number) => string
+
+/** 自己的 ID 換成 "self"，其他人依第一次出現的順序換成 "p1"、"p2"…；比對時轉成字串，123 和 "123" 是同一人 */
+export function createIdCoder(selfId: string | undefined): IdCoder {
+  const codes = new Map<string, string>()
+  return (id) => {
+    const key = String(id)
+    if (key === selfId)
+      return 'self'
+    let code = codes.get(key)
+    if (code === undefined) {
+      code = `p${codes.size + 1}`
+      codes.set(key, code)
+    }
+    return code
+  }
+}
+
+/** 自己的 ID：任一筆紀錄 URL 的 uid= 參數；找不到時用 start.json 回應的 user_id；都沒有回傳 undefined */
+export function findSelfId(records: readonly RecRecord[]): string | undefined {
+  for (const record of records) {
+    const uid = record.url.match(/[?&]uid=([^&#]+)/)?.[1]
+    if (uid)
+      return uid
+  }
+  for (const record of records) {
+    if (!START_JSON.test(record.url))
+      continue
+    const userId = (record.responseData as Record<string, unknown> | null | undefined)?.user_id
+    if (typeof userId === 'string' || typeof userId === 'number')
+      return String(userId)
+  }
+  return undefined
+}
+
+function maskEntry(key: string, value: unknown, code: IdCoder): unknown {
+  if (CHAT_KEYS.has(key))
+    return MASK
+  const normalized = key.replaceAll('_', '').toLowerCase()
+  const isId = normalized === 'uid' || normalized.includes('userid')
+  if (isId || MASKED_KEY_PARTS.some(part => normalized.includes(part))) {
+    // 只換字串與數字：非個人 buff 的 personal_buff_user_id 是 false，換掉會失去「不是個人 buff」這個資訊；
+    // ID 欄位的 0、""、"0" 同理，表示「沒有」，原樣保留
+    if (typeof value === 'string' || typeof value === 'number')
+      return !isId ? MASK : EMPTY_IDS.has(value) ? value : code(value)
+    // 值是陣列時逐一套用同一個 key 的規則：字串與數字換掉，物件照舊往下走訪
+    if (Array.isArray(value))
+      return value.map(item => maskEntry(key, item, code))
+  }
+  return maskValue(value, code)
+}
+
+/**
+ * 深層走訪（物件依 key 的順序、深度優先），回傳新物件，不修改傳入的值：
+ * - key 去掉 `_`、轉小寫後包含 userid 或等於 uid：值是字串或數字時換成代號；0、""、"0" 原樣保留
+ * - key 去掉 `_`、轉小寫後包含 viewerid、nickname、username、userimage：值是字串或數字時換成 "***"
+ * - 上面兩種 key 的值是陣列時，陣列裡的字串與數字照同樣規則換掉
+ * - key 是 chatAdd、raidPost、raidGet、commentData、user_comment：值整個換成 "***"
+ */
+export function maskValue(value: unknown, code: IdCoder): unknown {
   if (Array.isArray(value))
-    return value.map(maskValue)
+    return value.map(item => maskValue(item, code))
   if (value && typeof value === 'object')
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, MASKED_KEYS.has(k) ? MASK : maskValue(v)]))
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, maskEntry(k, v, code)]))
   return value
 }
 
-/** URL 查詢參數 uid 的值換成 "***" */
-export function maskUrl(url: string): string {
-  return url.replace(/([?&]uid=)[^&#]*/g, `$1${MASK}`)
+/** URL 查詢參數 uid、user_id 的值換成代號（空字串與 "0" 原樣保留），viewer_id 換成 "***" */
+export function maskUrl(url: string, code: IdCoder): string {
+  return url.replace(/([?&])(uid|user_id|viewer_id)=([^&#]*)/g, (_match, sep: string, name: string, id: string) =>
+    `${sep}${name}=${name === 'viewer_id' ? MASK : EMPTY_IDS.has(id) ? id : code(id)}`)
 }
 
-/** 匯出用的遮罩：requestData 是 JSON 字串時解析後遮罩再轉回字串，不是 JSON 的字串原樣保留 */
-export function maskRecord(record: RecRecord): RecRecord {
-  let requestData = record.requestData
-  if (typeof requestData === 'string') {
-    try {
-      requestData = JSON.stringify(maskValue(JSON.parse(requestData)))
-    }
-    catch {}
+/** 字串能解析成 JSON 時，解析、處理後再轉回字串；不是 JSON 的字串原樣保留 */
+function maskJsonString(text: string, code: IdCoder): string {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
   }
-  else {
-    requestData = maskValue(requestData)
+  catch {
+    return text
   }
-  return { ...record, url: maskUrl(record.url), requestData, responseData: maskValue(record.responseData) }
+  return JSON.stringify(maskValue(parsed, code))
+}
+
+/**
+ * 匯出用的遮罩：依 URL、requestData、responseData 的順序處理，代號照這個順序編。
+ * requestData、responseData 是字串時，能解析成 JSON 就解析、處理後再轉回字串；不是 JSON 的字串（例如 HTML）與 null 原樣保留
+ */
+export function maskRecord(record: RecRecord, code: IdCoder): RecRecord {
+  const url = maskUrl(record.url, code)
+  const requestData = typeof record.requestData === 'string' ? maskJsonString(record.requestData, code) : record.requestData
+  const responseData = typeof record.responseData === 'string' ? maskJsonString(record.responseData, code) : maskValue(record.responseData, code)
+  return { ...record, url, requestData, responseData }
 }
 
 /**
  * 匯出一場：檔名為 tn-rec-<raidId>-YYYYMMDD-HHmmss.json（本機時間），
- * 內容是索引資料加上遮罩後的 records，不縮排、結尾換行
+ * 內容是索引資料加上遮罩後的 records，不縮排、結尾換行。
+ * 玩家 ID 換成代號：自己是 self，其他人依出現順序（紀錄順序；每筆先 URL、再 requestData、最後 responseData）是 p1、p2…
  */
 export function buildExport(entry: RecIndexEntry, records: readonly RecRecord[], now: Date): { name: string, text: string } {
-  const data = { ...entry, records: records.map(maskRecord) }
+  // 整個檔共用一個 IdCoder，紀錄依序處理，代號才會跨紀錄一致
+  const code = createIdCoder(findSelfId(records))
+  const data = { ...entry, records: records.map(record => maskRecord(record, code)) }
   return { name: `tn-rec-${entry.raidId}-${dayjs(now).format('YYYYMMDD-HHmmss')}.json`, text: `${JSON.stringify(data)}\n` }
 }

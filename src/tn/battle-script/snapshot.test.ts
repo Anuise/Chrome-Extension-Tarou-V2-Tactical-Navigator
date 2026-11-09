@@ -41,9 +41,14 @@ describe('toBattleSnapshot', () => {
     assert.equal(snapshot.gauge, undefined)
     assert.equal(snapshot.omenText, '')
     assert.deepEqual(snapshot.bossBuffStatuses, [])
+    assert.deepEqual(snapshot.allies, [])
+    assert.deepEqual(snapshot.summons, [])
+    assert.equal(snapshot.chain, undefined)
+    assert.equal(snapshot.chainUsed, false)
+    assert.deepEqual(snapshot.history, [])
   })
 
-  it('戰鬥中把 questId、回合、HP、計量條、預兆與 boss buff 轉進 snapshot，第幾場為 1', () => {
+  it('戰鬥中把 questId、回合、HP、計量條、預兆與 boss buff 轉進 snapshot，第幾場為 1，尚未讀取的我方、召喚石、連鎖與歷史為空值', () => {
     assert.deepEqual(toBattleSnapshot(inBattle), {
       questId: '305421',
       battleCount: 1,
@@ -52,6 +57,10 @@ describe('toBattleSnapshot', () => {
       gauge: 70,
       omenText: '浄土|破壊',
       bossBuffStatuses: ['1001_1', '4052_1'],
+      allies: [],
+      summons: [],
+      chainUsed: false,
+      history: [],
     })
   })
 

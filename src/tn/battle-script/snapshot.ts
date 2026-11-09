@@ -15,5 +15,10 @@ export function toBattleSnapshot(battleInfo: Partial<BattleInfo>): BattleSnapsho
     gauge: bossInfo?.addition?.genesis,
     omenText: bossInfo?.interrupt_display_text ?? '',
     bossBuffStatuses: buffInfo?.bossBuffs?.map(buff => buff.status) ?? [],
+    // 以下欄位還沒從戰鬥資料讀取，先給空值：用到它們的條件一律不成立
+    allies: [],
+    summons: [],
+    chainUsed: false,
+    history: [],
   }
 }

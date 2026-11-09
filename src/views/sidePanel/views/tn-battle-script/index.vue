@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import type { BattleScript } from 'tn'
-import type { ImportResult } from '~/tn/battle-script/manage'
+import type { ImportResult, ScriptFile } from '~/tn/battle-script/manage'
 import { useFileDialog } from '@vueuse/core'
 import copy from 'copy-text-to-clipboard'
 import { ElMessage } from 'element-plus'
 import { computed, ref, watch } from 'vue'
 import { selectAdvice } from '~/tn/battle-script/core'
 import { exportScript, importScripts, removeScript } from '~/tn/battle-script/manage'
+import { exportBattleRecord } from '~/tn/battle-script/record'
 import { toBattleSnapshot } from '~/tn/battle-script/snapshot'
 import { battleScripts, selectedScriptKey } from '~/tn/battle-script/store'
-import { battleInfo, BossCard } from '~/tn/core/upstream'
+import { battleInfo, battleRecord, BossCard } from '~/tn/core/upstream'
 
 const snapshot = computed(() => toBattleSnapshot(battleInfo.value))
 // upstream 沒有「戰鬥中」旗標，battleInfo 戰後也不清除：有最近一場的戰鬥資料就視為在戰鬥中
@@ -54,14 +55,27 @@ function handleImport() {
   open()
 }
 
-function handleExport(script: BattleScript) {
-  const { name, text } = exportScript(script)
+/** 以瀏覽器下載一個 JSON 檔 */
+function download({ name, text }: ScriptFile) {
   const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }))
   const link = document.createElement('a')
   link.href = url
   link.download = name
   link.click()
   URL.revokeObjectURL(url)
+}
+
+function handleExport(script: BattleScript) {
+  download(exportScript(script))
+}
+
+/** 匯出 upstream 的 battleRecord（最近 10 場）全部場次，只讀不寫 */
+function handleExportRecord() {
+  if (battleRecord.value.length === 0) {
+    ElMessage.warning('沒有戰鬥紀錄可以匯出')
+    return
+  }
+  download(exportBattleRecord(battleRecord.value, new Date()))
 }
 
 function handleRemove(script: BattleScript) {
@@ -118,11 +132,17 @@ function handleRemove(script: BattleScript) {
               無符合腳本
             </div>
           </div>
-          <el-button size="small" type="primary" @click="handleCopyQuestInfo">
-            複製目前關卡資訊
-          </el-button>
         </template>
         <el-result v-else icon="info" sub-title="進入戰鬥後會顯示目前關卡資訊與操作建議" />
+        <!-- 匯出戰鬥紀錄不限戰鬥中，沒有戰鬥資料時也能按，沒有紀錄時提示 -->
+        <div flex>
+          <el-button v-if="inBattle" size="small" type="primary" @click="handleCopyQuestInfo">
+            複製目前關卡資訊
+          </el-button>
+          <el-button size="small" @click="handleExportRecord">
+            匯出戰鬥紀錄
+          </el-button>
+        </div>
       </div>
     </el-tab-pane>
 

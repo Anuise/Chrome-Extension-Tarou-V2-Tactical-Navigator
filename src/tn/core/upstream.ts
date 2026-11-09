@@ -2,5 +2,5 @@
 // upstream 的 storage ref 一律唯讀
 export type { BattleInfo } from 'battle'
 export { useWebExtensionStorage } from '~/composables/useWebExtensionStorage'
-export { battleInfo } from '~/logic'
+export { battleInfo, battleRecord } from '~/logic'
 export { default as BossCard } from '~/views/sidePanel/views/combat/components/BossCard.vue'

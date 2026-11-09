@@ -54,9 +54,9 @@ export function byteLength(record: RecRecord): number {
   return new TextEncoder().encode(JSON.stringify(record)).length
 }
 
-/** requestData 的解析結果；沒有 requestData 或不是 JSON 時回傳 undefined */
+/** requestData 的解析結果；不是字串（沒有 requestData，或 jQuery 的 data 是 null）或不是 JSON 時回傳 undefined */
 function parseRequestData(requestData: string | undefined): unknown {
-  if (requestData === undefined)
+  if (typeof requestData !== 'string')
     return undefined
   try {
     return JSON.parse(requestData)
@@ -218,10 +218,13 @@ export function maskUrl(url: string): string {
   return url.replace(/([?&]uid=)[^&#]*/g, `$1${MASK}`)
 }
 
-/** 匯出用的遮罩：requestData 解析後遮罩再轉回字串，不是 JSON 的字串原樣保留 */
+/**
+ * 匯出用的遮罩：requestData 解析後遮罩再轉回字串，不是 JSON 的字串原樣保留。
+ * 型別上是 string，但內容腳本送來的 JSON 裡可能是 null（jQuery 的 data 是 null），不是字串時原樣保留
+ */
 export function maskRecord(record: RecRecord): RecRecord {
   let requestData = record.requestData
-  if (requestData !== undefined) {
+  if (typeof requestData === 'string') {
     try {
       requestData = JSON.stringify(maskValue(JSON.parse(requestData)))
     }

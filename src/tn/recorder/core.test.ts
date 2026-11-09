@@ -277,6 +277,12 @@ describe('遮罩', () => {
     assert.equal(maskRecord({ t: 0, url: '/x' }).requestData, undefined)
   })
 
+  it('requestData 是 null 時（jQuery 的 data 是 null）匯出仍是 null，不會變成字串 "null"；raid_id 改從 responseData 取', () => {
+    const record = JSON.parse('{"t":0,"url":"/rest/raid/x","requestData":null,"responseData":{"raid_id":33333333}}') as RecRecord
+    assert.equal(maskRecord(record).requestData, null)
+    assert.deepEqual(resolveRaidId(record), { raidId: '33333333', source: 'response' })
+  })
+
   it('WebSocket 訊框（解析後的陣列）也會遮', () => {
     const record: RecRecord = { t: 0, url: 'websocket', responseData: ['raid', { memberJoin: { user_id: '1', nickname: 'A' }, chatAdd: { userId: '1' } }] }
     assert.deepEqual(maskRecord(record).responseData, ['raid', { memberJoin: { user_id: '***', nickname: '***' }, chatAdd: '***' }])

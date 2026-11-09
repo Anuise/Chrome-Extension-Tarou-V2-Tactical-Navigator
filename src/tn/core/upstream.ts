@@ -3,6 +3,8 @@
 export type { BattleInfo } from 'battle'
 export type { BattleRecord } from 'extension'
 export type { Ability, AttackResultJson, BattleStartJson, Buff, Condition } from 'source'
+// getBuffIcon 只用 status 組出 CDN 圖示網址的字串，沒有其他行為（RULES §5.1）
+export { getBuffIcon } from '~/composables/useImage'
 export { useWebExtensionStorage } from '~/composables/useWebExtensionStorage'
 export { battleInfo, battleRecord } from '~/logic'
 export { default as BossCard } from '~/views/sidePanel/views/combat/components/BossCard.vue'

@@ -119,9 +119,11 @@ export function raidIdOf(record: RecRecord, index: readonly RecIndexEntry[]): st
   return latest?.raidId
 }
 
+const START_JSON = /\/rest\/(?:raid|multiraid)\/start\.json/
+
 /** start.json 回應的 quest_id */
 export function questIdOf(record: RecRecord): string | undefined {
-  if (!/\/rest\/(?:raid|multiraid)\/start\.json/.test(record.url))
+  if (!START_JSON.test(record.url))
     return undefined
   const questId = (record.responseData as Record<string, unknown> | undefined)?.quest_id
   return questId === undefined || questId === null || questId === '' ? undefined : String(questId)
@@ -186,63 +188,109 @@ export function planAppend(
   return { index: list, key, removed }
 }
 
-/** 玩家識別資料的 key，比對前先去掉 `_`、轉小寫；另外包含 userid 的 key 也算 */
-const MASKED_KEYS = new Set(['uid', 'viewerid', 'nickname', 'username', 'userimage'])
+/** 換成 "***" 的 key（去掉 `_`、轉小寫後比對）；viewer_id 和 user_id 是不同的編號體系，不放進代號對照表 */
+const MASKED_KEYS = new Set(['viewerid', 'nickname', 'username', 'userimage'])
 /** 聊天：分析戰鬥用不到，而且有其他玩家的發言，值整個遮掉；commentData、user_comment 是聊天文字的容器，掛在其他 key 底下時也遮 */
 const CHAT_KEYS = new Set(['chatAdd', 'raidPost', 'raidGet', 'commentData', 'user_comment'])
 const MASK = '***'
 
-function maskEntry(key: string, value: unknown): unknown {
+/** 玩家 ID 換成代號；同一個匯出檔共用一個，才會同一人同一代號 */
+export type IdCoder = (id: string | number) => string
+
+/** 自己的 ID 換成 "self"，其他人依第一次出現的順序換成 "p1"、"p2"…；比對時轉成字串，123 和 "123" 是同一人 */
+export function createIdCoder(selfId: string | undefined): IdCoder {
+  const codes = new Map<string, string>()
+  return (id) => {
+    const key = String(id)
+    if (key === selfId)
+      return 'self'
+    let code = codes.get(key)
+    if (code === undefined) {
+      code = `p${codes.size + 1}`
+      codes.set(key, code)
+    }
+    return code
+  }
+}
+
+/** 自己的 ID：任一筆紀錄 URL 的 uid= 參數；找不到時用 start.json 回應的 user_id；都沒有回傳 undefined */
+export function findSelfId(records: readonly RecRecord[]): string | undefined {
+  for (const record of records) {
+    const uid = record.url.match(/[?&]uid=([^&#]+)/)?.[1]
+    if (uid)
+      return uid
+  }
+  for (const record of records) {
+    if (!START_JSON.test(record.url))
+      continue
+    const userId = (record.responseData as Record<string, unknown> | null | undefined)?.user_id
+    if (typeof userId === 'string' || typeof userId === 'number')
+      return String(userId)
+  }
+  return undefined
+}
+
+function maskEntry(key: string, value: unknown, code: IdCoder): unknown {
   if (CHAT_KEYS.has(key))
     return MASK
   const normalized = key.replaceAll('_', '').toLowerCase()
-  if (MASKED_KEYS.has(normalized) || normalized.includes('userid')) {
-    // 只遮字串與數字：非個人 buff 的 personal_buff_user_id 是 false，遮掉會失去「不是個人 buff」這個資訊
+  const isId = normalized === 'uid' || normalized.includes('userid')
+  if (isId || MASKED_KEYS.has(normalized)) {
+    // 只換字串與數字：非個人 buff 的 personal_buff_user_id 是 false，換掉會失去「不是個人 buff」這個資訊
     if (typeof value === 'string' || typeof value === 'number')
-      return MASK
-    // 值是陣列時逐一套用同一個 key 的規則：字串與數字遮掉，物件照舊往下走訪
+      return isId ? code(value) : MASK
+    // 值是陣列時逐一套用同一個 key 的規則：字串與數字換掉，物件照舊往下走訪
     if (Array.isArray(value))
-      return value.map(item => maskEntry(key, item))
+      return value.map(item => maskEntry(key, item, code))
   }
-  return maskValue(value)
+  return maskValue(value, code)
 }
 
 /**
- * 深層走訪，回傳新物件，不修改傳入的值：
- * - key 去掉 `_`、轉小寫後包含 userid，或等於 uid、viewerid、nickname、username、userimage：
- *   值是字串或數字時換成 "***"，值是陣列時陣列裡的字串與數字換成 "***"
+ * 深層走訪（物件依 key 的順序、深度優先），回傳新物件，不修改傳入的值：
+ * - key 去掉 `_`、轉小寫後包含 userid 或等於 uid：值是字串或數字時換成代號
+ * - key 去掉 `_`、轉小寫後等於 viewerid、nickname、username、userimage：值是字串或數字時換成 "***"
+ * - 上面兩種 key 的值是陣列時，陣列裡的字串與數字照同樣規則換掉
  * - key 是 chatAdd、raidPost、raidGet、commentData、user_comment：值整個換成 "***"
  */
-export function maskValue(value: unknown): unknown {
+export function maskValue(value: unknown, code: IdCoder): unknown {
   if (Array.isArray(value))
-    return value.map(maskValue)
+    return value.map(item => maskValue(item, code))
   if (value && typeof value === 'object')
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, maskEntry(k, v)]))
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, maskEntry(k, v, code)]))
   return value
 }
 
-/** URL 查詢參數 uid、user_id、viewer_id 的值換成 "***" */
-export function maskUrl(url: string): string {
-  return url.replace(/([?&](?:uid|user_id|viewer_id)=)[^&#]*/g, `$1${MASK}`)
+/** URL 查詢參數 uid、user_id 的值換成代號，viewer_id 換成 "***" */
+export function maskUrl(url: string, code: IdCoder): string {
+  return url.replace(/([?&])(uid|user_id|viewer_id)=([^&#]*)/g, (_match, sep: string, name: string, id: string) => `${sep}${name}=${name === 'viewer_id' ? MASK : code(id)}`)
 }
 
-/** 匯出用的遮罩：requestData 解析後遮罩再轉回字串，不是 JSON 的字串與 null 原樣保留 */
-export function maskRecord(record: RecRecord): RecRecord {
+/**
+ * 匯出用的遮罩：依 URL、requestData、responseData 的順序處理，代號照這個順序編。
+ * requestData 解析後遮罩再轉回字串，不是 JSON 的字串與 null 原樣保留
+ */
+export function maskRecord(record: RecRecord, code: IdCoder): RecRecord {
+  const url = maskUrl(record.url, code)
   let requestData = record.requestData
   if (typeof requestData === 'string') {
     try {
-      requestData = JSON.stringify(maskValue(JSON.parse(requestData)))
+      requestData = JSON.stringify(maskValue(JSON.parse(requestData), code))
     }
     catch {}
   }
-  return { ...record, url: maskUrl(record.url), requestData, responseData: maskValue(record.responseData) }
+  const responseData = maskValue(record.responseData, code)
+  return { ...record, url, requestData, responseData }
 }
 
 /**
  * 匯出一場：檔名為 tn-rec-<raidId>-YYYYMMDD-HHmmss.json（本機時間），
- * 內容是索引資料加上遮罩後的 records，不縮排、結尾換行
+ * 內容是索引資料加上遮罩後的 records，不縮排、結尾換行。
+ * 玩家 ID 換成代號：自己是 self，其他人依出現順序（紀錄順序；每筆先 URL、再 requestData、最後 responseData）是 p1、p2…
  */
 export function buildExport(entry: RecIndexEntry, records: readonly RecRecord[], now: Date): { name: string, text: string } {
-  const data = { ...entry, records: records.map(maskRecord) }
+  // 整個檔共用一個 IdCoder，紀錄依序處理，代號才會跨紀錄一致
+  const code = createIdCoder(findSelfId(records))
+  const data = { ...entry, records: records.map(record => maskRecord(record, code)) }
   return { name: `tn-rec-${entry.raidId}-${dayjs(now).format('YYYYMMDD-HHmmss')}.json`, text: `${JSON.stringify(data)}\n` }
 }

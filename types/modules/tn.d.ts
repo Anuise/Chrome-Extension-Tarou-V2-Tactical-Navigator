@@ -46,4 +46,50 @@ declare module 'tn' {
     enabled: boolean
     script: BattleScript
   }
+
+  /**
+   * storage key `tn:battle-state`：tn 自己解析原始回應得到的目前這一場戰鬥狀態，只存一場。
+   * raid_id 變了就整份重建；同一場重新整理（再收到 start.json）時保留召喚次數、chainUsed 與 boss buff 歷史
+   */
+  interface BattleState {
+    raidId: string
+    questId: string
+    /** 多段戰的第幾場（start.json 的 battle.count） */
+    battleCount: number
+    /** 自己的 user id（start.json 的 user_id），用來過濾 boss 身上別人的個人 buff */
+    userId: string
+    /** 我方角色，依 start.json player.param 的順序（含後排）；索引就是 player 索引 */
+    allies: BattleStateAlly[]
+    /** 前排各格（0 起算）是 allies 的第幾個 */
+    formation: number[]
+    /** 召喚石：主召、副召依格號排列（第 n 格在索引 n-1），好友召喚在最後 */
+    summons: BattleStateSummon[]
+    /** 連鎖技能（DC）的 ability ID，依 start.json group_gauge.ability_list 的順序 */
+    chainAbilityIds: string[]
+    /** 本場發動過連鎖技能 */
+    chainUsed: boolean
+    /** 目前主 boss 身上的 buff 與 debuff status，以 status 去重 */
+    bossBuffStatuses: string[]
+    /** 每回合一筆：回合開始時（該回合第一個回應處理完）的 boss buff status，依回合遞增 */
+    bossBuffHistory: { turn: number, statuses: string[] }[]
+  }
+
+  interface BattleStateAlly {
+    /** pid 底線前的部分；角色是角色 ID */
+    id: string
+    /** 主角 */
+    isLeader: boolean
+    /** buff 與 debuff 的 status，以 status 去重 */
+    buffStatuses: string[]
+    /** 技能格與技能 ID；只有上過前排的角色才有 */
+    abilities: { slot: number, abilityId: string }[]
+  }
+
+  interface BattleStateSummon {
+    from: 'main' | 'sub' | 'friend'
+    /** 召喚石 ID；空的格子為空字串 */
+    id: string
+    /** 本場召喚過幾次 */
+    used: number
+  }
 }

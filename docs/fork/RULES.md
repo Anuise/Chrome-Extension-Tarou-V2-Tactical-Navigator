@@ -99,6 +99,7 @@
 | rebase 或 force push `main` | merge | ADR-0001 |
 | 推送 `x.y.z` 格式的 tag（會觸發 `release.yml`） | `tn-v*` | ADR-0005 |
 | 在 `main` 上直接修 upstream 的 bug | §9 的 `upstream-pr/<slug>` | [ADR-0006](../adr/0006-upstream-contribution.md) |
+| 主動向遊戲伺服器發送任何請求，包括 `fetch`、`XMLHttpRequest`、jQuery ajax、在頁面注入程式去觸發遊戲的 API，以及 `chrome.debugger.sendCommand` 這類會發出網路請求或改變遊戲狀態的指令 | 只被動接收遊戲自己發出的請求的回應：§3 的 `tnUnpack` 掛鉤點、`chrome.debugger` 的事件監聽 | 使用者鐵則（2026-11-09） |
 
 ## 6. 使用 upstream 程式碼
 

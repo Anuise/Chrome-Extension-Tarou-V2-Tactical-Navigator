@@ -233,12 +233,26 @@ describe('遮罩', () => {
     )
   })
 
-  it('要遮的 key 底下是物件或陣列時不整個遮，繼續往下走訪', () => {
-    assert.deepEqual(maskValue({ user_id: { nickname: 'A', level: 1 }, nickname: ['B'] }), { user_id: { nickname: '***', level: 1 }, nickname: ['B'] })
+  it('要遮的 key 底下是物件時不整個遮，繼續往下走訪；是陣列時陣列裡的字串與數字遮掉', () => {
+    assert.deepEqual(maskValue({ user_id: { nickname: 'A', level: 1 }, nickname: ['B'] }), { user_id: { nickname: '***', level: 1 }, nickname: ['***'] })
   })
 
-  it('不相干的 key 不遮：只比對完整名稱與 userid 結尾', () => {
-    const value = { raid_id: 11111111, user_rank: 300, nickname_color: 'red', userid_list: ['1'], pc_image: 'p.png', level: 200 }
+  it('陣列值逐一處理：字串與數字遮掉，false、null 保留，物件與巢狀陣列照同一個 key 的規則往下走', () => {
+    assert.deepEqual(
+      maskValue({ user_ids: ['1', 2, false, null, { nickname: 'A', level: 3 }, ['4']] }),
+      { user_ids: ['***', '***', false, null, { nickname: '***', level: 3 }, ['***']] },
+    )
+  })
+
+  it('正規化後包含 userid 的 key，以及等於 uid 的 key 也遮', () => {
+    assert.deepEqual(
+      maskValue({ user_ids: ['1'], userid_list: ['2'], member_user_id_list: [3], uid: '4', UID: 5 }),
+      { user_ids: ['***'], userid_list: ['***'], member_user_id_list: ['***'], uid: '***', UID: '***' },
+    )
+  })
+
+  it('不相干的 key 不遮：uid、viewerid 等只比對完整名稱', () => {
+    const value = { raid_id: 11111111, user_rank: 300, nickname_color: 'red', turn_list: [1, 2], uid_x: '1', guid: 'g', pc_image: 'p.png', level: 200 }
     assert.deepEqual(maskValue(value), value)
   })
 
@@ -249,10 +263,18 @@ describe('遮罩', () => {
     )
   })
 
-  it('maskUrl 遮掉查詢參數 uid，不動其他參數與路徑', () => {
+  it('聊天文字的容器 commentData、user_comment 掛在其他 key 底下時也整個遮', () => {
+    assert.deepEqual(
+      maskValue({ log: [{ commentData: { content: '你好', stamp: 1 } }, { user_comment: { text: 'hi' } }] }),
+      { log: [{ commentData: '***' }, { user_comment: '***' }] },
+    )
+  })
+
+  it('maskUrl 遮掉查詢參數 uid、user_id、viewer_id，不動其他參數與路徑', () => {
     assert.equal(maskUrl('/rest/raid/start.json?_=1700000000000&t=1700000000001&uid=12345678'), '/rest/raid/start.json?_=1700000000000&t=1700000000001&uid=***')
     assert.equal(maskUrl('https://game.granbluefantasy.jp/rest/raid/x.json?uid=12345678&_=1#a'), 'https://game.granbluefantasy.jp/rest/raid/x.json?uid=***&_=1#a')
-    assert.equal(maskUrl('/rest/raid/x.json?auid=1&uid_x=2'), '/rest/raid/x.json?auid=1&uid_x=2')
+    assert.equal(maskUrl('/rest/raid/x.json?user_id=1&viewer_id=2&uid=3'), '/rest/raid/x.json?user_id=***&viewer_id=***&uid=***')
+    assert.equal(maskUrl('/rest/raid/x.json?auid=1&uid_x=2&my_user_id=3'), '/rest/raid/x.json?auid=1&uid_x=2&my_user_id=3')
   })
 
   it('maskRecord 解析 JSON 字串的 requestData 後遮罩再轉回字串，並遮 URL 與 responseData', () => {

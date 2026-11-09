@@ -6,7 +6,7 @@ import dayjs from 'dayjs'
 export interface RecRecord {
   t: number
   url: string
-  requestData?: string
+  requestData?: string | null
   responseData?: unknown
 }
 
@@ -29,6 +29,8 @@ export interface RecLimits {
   maxBytes: number
 }
 
+// 依賴 manifest 的 unlimitedStorage：沒有這個權限時 chrome.storage.local 只有 10 MB 且和 upstream 共用，
+// 錄一場就會把配額用完，upstream 的寫入跟著失敗（同步 upstream 時的檢查見 RULES §7）
 export const REC_LIMITS: RecLimits = { maxRaids: 3, maxBytes: 50 * 1024 * 1024 }
 
 export const REC_ENABLED_KEY = 'tn:rec:enabled'
@@ -55,7 +57,7 @@ export function byteLength(record: RecRecord): number {
 }
 
 /** requestData 的解析結果；不是字串（沒有 requestData，或 jQuery 的 data 是 null）或不是 JSON 時回傳 undefined */
-function parseRequestData(requestData: string | undefined): unknown {
+function parseRequestData(requestData: string | null | undefined): unknown {
   if (typeof requestData !== 'string')
     return undefined
   try {
@@ -184,26 +186,32 @@ export function planAppend(
   return { index: list, key, removed }
 }
 
-/** 玩家識別資料的 key，比對前先去掉 `_`、轉小寫 */
-const MASKED_KEYS = new Set(['userid', 'viewerid', 'nickname', 'username', 'userimage'])
-/** WebSocket 聊天：分析戰鬥用不到，而且有其他玩家的發言，值整個遮掉 */
-const CHAT_KEYS = new Set(['chatAdd', 'raidPost', 'raidGet'])
+/** 玩家識別資料的 key，比對前先去掉 `_`、轉小寫；另外包含 userid 的 key 也算 */
+const MASKED_KEYS = new Set(['uid', 'viewerid', 'nickname', 'username', 'userimage'])
+/** 聊天：分析戰鬥用不到，而且有其他玩家的發言，值整個遮掉；commentData、user_comment 是聊天文字的容器，掛在其他 key 底下時也遮 */
+const CHAT_KEYS = new Set(['chatAdd', 'raidPost', 'raidGet', 'commentData', 'user_comment'])
 const MASK = '***'
 
 function maskEntry(key: string, value: unknown): unknown {
   if (CHAT_KEYS.has(key))
     return MASK
   const normalized = key.replaceAll('_', '').toLowerCase()
-  // 只遮字串與數字：非個人 buff 的 personal_buff_user_id 是 false，遮掉會失去「不是個人 buff」這個資訊
-  if ((MASKED_KEYS.has(normalized) || normalized.endsWith('userid')) && (typeof value === 'string' || typeof value === 'number'))
-    return MASK
+  if (MASKED_KEYS.has(normalized) || normalized.includes('userid')) {
+    // 只遮字串與數字：非個人 buff 的 personal_buff_user_id 是 false，遮掉會失去「不是個人 buff」這個資訊
+    if (typeof value === 'string' || typeof value === 'number')
+      return MASK
+    // 值是陣列時逐一套用同一個 key 的規則：字串與數字遮掉，物件照舊往下走訪
+    if (Array.isArray(value))
+      return value.map(item => maskEntry(key, item))
+  }
   return maskValue(value)
 }
 
 /**
  * 深層走訪，回傳新物件，不修改傳入的值：
- * - key 去掉 `_`、轉小寫後是 userid、viewerid、nickname、username、userimage，或以 userid 結尾，而且值是字串或數字：換成 "***"
- * - key 是 chatAdd、raidPost、raidGet：值整個換成 "***"
+ * - key 去掉 `_`、轉小寫後包含 userid，或等於 uid、viewerid、nickname、username、userimage：
+ *   值是字串或數字時換成 "***"，值是陣列時陣列裡的字串與數字換成 "***"
+ * - key 是 chatAdd、raidPost、raidGet、commentData、user_comment：值整個換成 "***"
  */
 export function maskValue(value: unknown): unknown {
   if (Array.isArray(value))
@@ -213,15 +221,12 @@ export function maskValue(value: unknown): unknown {
   return value
 }
 
-/** URL 查詢參數 uid 的值換成 "***" */
+/** URL 查詢參數 uid、user_id、viewer_id 的值換成 "***" */
 export function maskUrl(url: string): string {
-  return url.replace(/([?&]uid=)[^&#]*/g, `$1${MASK}`)
+  return url.replace(/([?&](?:uid|user_id|viewer_id)=)[^&#]*/g, `$1${MASK}`)
 }
 
-/**
- * 匯出用的遮罩：requestData 解析後遮罩再轉回字串，不是 JSON 的字串原樣保留。
- * 型別上是 string，但內容腳本送來的 JSON 裡可能是 null（jQuery 的 data 是 null），不是字串時原樣保留
- */
+/** 匯出用的遮罩：requestData 解析後遮罩再轉回字串，不是 JSON 的字串與 null 原樣保留 */
 export function maskRecord(record: RecRecord): RecRecord {
   let requestData = record.requestData
   if (typeof requestData === 'string') {

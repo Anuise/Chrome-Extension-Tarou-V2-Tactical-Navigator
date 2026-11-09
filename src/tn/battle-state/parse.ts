@@ -118,7 +118,9 @@ export function applyActionResult(state: BattleState, data: AttackResultJson, ki
   const next = structuredClone(state)
   const { scenario, status } = data
 
-  // 同 upstream：scenario 的 pos 用這個回應處理完的前排對到角色
+  // 同 upstream：scenario 的 pos 用這個回應處理完的前排對到角色。
+  // 已知限制：同一個回應中途換人時，換人前的 condition 也會對到新的前排
+  // （每個位置只取最後一個 condition，通常是換人之後的那個）
   if (status?.formation)
     next.formation = status.formation.map(Number)
   applyAbility(next.allies, status?.ability)

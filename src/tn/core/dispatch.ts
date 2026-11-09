@@ -1,3 +1,5 @@
+import { handleBattleState } from '~/tn/battle-state/background'
+
 /** 內容腳本送來的 AJAX 回應，結構與 upstream `unpack` 解析的物件相同 */
 export interface TnParcel {
   url: string
@@ -33,7 +35,9 @@ export function dispatchParcel(parcel: unknown, handlers: ((parcel: TnParcel) =>
 }
 
 // 後續票各在這裡加一個 import 和一個項目
-const handlers: ((parcel: TnParcel) => void)[] = []
+const handlers: ((parcel: TnParcel) => void)[] = [
+  handleBattleState,
+]
 
 /** 掛在 background 的 `onMessage('express')` 裡，緊接在 upstream `unpack` 之後（RULES §3） */
 export function tnUnpack(parcel: unknown): void {

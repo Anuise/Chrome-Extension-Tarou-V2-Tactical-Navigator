@@ -1,3 +1,4 @@
+import { handleBattleState } from '~/tn/battle-state/background'
 import { recordParcel, setupRecorderWebSocket } from '~/tn/recorder/store'
 
 /** 內容腳本送來的 AJAX 回應，結構與 upstream `unpack` 解析的物件相同 */
@@ -47,6 +48,7 @@ export function dispatchParcel(parcel: unknown, handlers: TnHandler[]): void {
 // 已經反映這筆回應，但 storage 還沒寫入；upstream 之後在 unpack 加了 await，要重新確認
 const handlers: TnHandler[] = [
   recordParcel,
+  handleBattleState,
 ]
 
 /** 掛在 background 的 `onMessage('express')` 裡，緊接在 upstream `unpack` 之後（RULES §3） */

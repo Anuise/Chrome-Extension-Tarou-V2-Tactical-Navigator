@@ -11,9 +11,11 @@ import { exportScript, importScripts, removeScript } from '~/tn/battle-script/ma
 import { exportBattleRecord, findOngoingRecord } from '~/tn/battle-script/record'
 import { toBattleSnapshot } from '~/tn/battle-script/snapshot'
 import { battleScripts, selectedScriptKey } from '~/tn/battle-script/store'
+import { battleState } from '~/tn/battle-state/store'
 import { battleInfo, battleRecord, BossCard } from '~/tn/core/upstream'
+import DiagnosticsPanel from './DiagnosticsPanel.vue'
 
-const snapshot = computed(() => toBattleSnapshot(battleInfo.value))
+const snapshot = computed(() => toBattleSnapshot(battleInfo.value, battleRecord.value, battleState.value))
 // upstream 沒有「戰鬥中」旗標，battleInfo 戰後也不清除：有最近一場的戰鬥資料就視為在戰鬥中
 const inBattle = computed(() => snapshot.value.questId !== undefined)
 // 戰鬥狀態、腳本或選中的腳本改變時重新計算；規則不記錄觸發狀態
@@ -151,6 +153,7 @@ function handleRemove(script: BattleScript) {
               無符合腳本
             </div>
           </div>
+          <DiagnosticsPanel :snapshot="snapshot" />
         </template>
         <el-result v-else icon="info" sub-title="進入戰鬥後會顯示目前關卡資訊與操作建議" />
         <!-- 匯出戰鬥紀錄不限戰鬥中，沒有戰鬥資料時也能按，沒有紀錄時提示 -->

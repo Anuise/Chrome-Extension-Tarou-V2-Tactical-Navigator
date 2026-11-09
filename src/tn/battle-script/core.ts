@@ -14,8 +14,8 @@ import type {
 export interface BattleSnapshot {
   /** 沒有任何戰鬥資料（視為不在戰鬥中）時為 undefined */
   questId?: string
-  /** 多段戰的第幾場 */
-  battleCount: number
+  /** 多段戰的第幾場；沒有資料時為 undefined，有寫 battleCount 的腳本就不相符 */
+  battleCount?: number
   turn?: number
   /** boss HP 百分比（0–100） */
   hpPercent?: number
@@ -23,16 +23,16 @@ export interface BattleSnapshot {
   gauge?: number
   /** 預兆文字，多個預兆以 `|` 連接；沒有預兆時為空字串 */
   omenText: string
-  /** boss 身上所有 buff 與 debuff 的 status，例如 `4052_1` */
-  bossBuffStatuses: string[]
+  /** boss 身上所有 buff 與 debuff 的 status，例如 `4052_1`；沒有資料時為 undefined */
+  bossBuffStatuses?: string[]
   /** 我方角色，依 start.json player.param 的順序（含後排）；沒有資料時為空陣列 */
   allies: SnapshotAlly[]
   /** 召喚石（主召、副召、好友）；沒有資料時為空陣列 */
   summons: SnapshotSummon[]
   /** 連鎖條（DC）百分比；沒有資料時為 undefined */
   chain?: number
-  /** 本場是否發動過連鎖技能 */
-  chainUsed: boolean
+  /** 本場是否發動過連鎖技能；沒有資料時為 undefined */
+  chainUsed?: boolean
   /** 每回合一筆，依回合遞增；最後一筆是目前回合 */
   history: SnapshotTurn[]
 }
@@ -44,7 +44,8 @@ export interface SnapshotAlly {
   isLeader: boolean
   /** 在前排 */
   front: boolean
-  dead: boolean
+  /** 戰鬥不能；沒有資料時為 undefined */
+  dead?: boolean
   hp?: number
   hpMax?: number
   /** buff 與 debuff；remain 只有拿得到剩餘回合時才有 */
@@ -60,8 +61,8 @@ export interface SnapshotAbility {
   ready?: boolean
   /** 剩餘冷卻回合；不知道時 undefined */
   recast?: number
-  /** 本場用過幾次 */
-  used: number
+  /** 本場用過幾次；沒有資料時為 undefined */
+  used?: number
 }
 
 export interface SnapshotSummon {
@@ -70,8 +71,8 @@ export interface SnapshotSummon {
   id: string
   ready?: boolean
   recast?: number
-  /** 本場召喚過幾次 */
-  used: number
+  /** 本場召喚過幾次；沒有資料時為 undefined */
+  used?: number
 }
 
 export interface SnapshotTurn {
@@ -406,7 +407,8 @@ function holds(
     && (hp === undefined || inRange(snapshot.hpPercent, hp))
     && (gauge === undefined || inRange(snapshot.gauge, gauge))
     && (omen === undefined || omenHolds(omen, omenNum, snapshot.omenText))
-    && (bossBuff === undefined || snapshot.bossBuffStatuses.some(status => status.startsWith(bossBuff)))
+    // 沒有 boss buff 的資料時不成立
+    && (bossBuff === undefined || snapshot.bossBuffStatuses?.some(status => status.startsWith(bossBuff)) === true)
     && (not === undefined || !holds(not, snapshot))
     && (ally === undefined || [ally].flat().every(item => allyHolds(item, snapshot.allies)))
     && (ability === undefined || [ability].flat().every(item => abilityHolds(item, snapshot.allies)))

@@ -11,6 +11,10 @@ const props = defineProps<{ snapshot: BattleSnapshot }>()
 
 // 面板只渲染這份資料，按鈕複製同一份，兩邊的值一定一致
 const diagnostics = computed(() => toDiagnostics(props.snapshot))
+// 沒有資料時這幾項是「未取得」等說明文字，面板直接顯示文字
+const bossBuffs = computed(() => (typeof diagnostics.value.bossBuffs === 'string' ? undefined : diagnostics.value.bossBuffs))
+const allies = computed(() => (typeof diagnostics.value.allies === 'string' ? undefined : diagnostics.value.allies))
+const summons = computed(() => (typeof diagnostics.value.summons === 'string' ? undefined : diagnostics.value.summons))
 const lastTurn = computed(() => (typeof diagnostics.value.lastTurn === 'string' ? undefined : diagnostics.value.lastTurn))
 
 function handleCopy() {
@@ -36,6 +40,9 @@ function buffIcon(status: string) {
         </div>
 
         <el-descriptions size="small" :column="2" border>
+          <el-descriptions-item label="第幾場">
+            {{ diagnostics.battleCount }}
+          </el-descriptions-item>
           <el-descriptions-item label="回合">
             {{ diagnostics.turn }}
           </el-descriptions-item>
@@ -60,9 +67,22 @@ function buffIcon(status: string) {
         </el-descriptions>
 
         <div font-bold>
+          boss buff
+        </div>
+        <div v-if="bossBuffs && bossBuffs.length > 0" flex flex-wrap gap-x-8px gap-y-2px>
+          <span v-for="status in bossBuffs" :key="status" inline-flex items-center gap-2px>
+            <img :src="buffIcon(status)" :alt="status" h-20px w-20px>
+            {{ status }}
+          </span>
+        </div>
+        <div v-else text-neutral-4>
+          {{ bossBuffs ? '無' : diagnostics.bossBuffs }}
+        </div>
+
+        <div font-bold>
           前排角色
         </div>
-        <div v-for="ally in diagnostics.allies" :key="ally.id" flex flex-col gap-4px rounded-md p-6px ring-1 ring-neutral-7>
+        <div v-for="ally in allies" :key="ally.id" flex flex-col gap-4px rounded-md p-6px ring-1 ring-neutral-7>
           <div break-all text-13px font-bold>
             {{ ally.id }}
           </div>
@@ -87,25 +107,25 @@ function buffIcon(status: string) {
             </tbody>
           </table>
         </div>
-        <div v-if="diagnostics.allies.length === 0" text-neutral-4>
-          無
+        <div v-if="!allies || allies.length === 0" text-neutral-4>
+          {{ allies ? '無' : diagnostics.allies }}
         </div>
 
         <div font-bold>
           召喚石
         </div>
-        <table v-if="diagnostics.summons.length > 0" w-full text-center>
+        <table v-if="summons && summons.length > 0" w-full text-center>
           <thead text-neutral-4>
             <tr><th>來源</th><th>ID</th><th>用過</th><th>可用</th><th>冷卻</th></tr>
           </thead>
           <tbody>
-            <tr v-for="(summon, index) in diagnostics.summons" :key="index">
+            <tr v-for="(summon, index) in summons" :key="index">
               <td>{{ summon.from }}</td><td>{{ summon.id }}</td><td>{{ summon.used }}</td><td>{{ summon.ready }}</td><td>{{ summon.recast }}</td>
             </tr>
           </tbody>
         </table>
         <div v-else text-neutral-4>
-          無
+          {{ summons ? '無' : diagnostics.summons }}
         </div>
 
         <div font-bold>

@@ -12,7 +12,7 @@ const full: BattleSnapshot = {
   hpPercent: 49.5,
   gauge: 70,
   omenText: '600万ダメ5ヒット',
-  bossBuffStatuses: ['3353_1'],
+  bossBuffStatuses: ['3353_1', '1427'],
   allies: [
     {
       id: '450201',
@@ -41,9 +41,24 @@ const full: BattleSnapshot = {
   ],
 }
 
+/** toBattleSnapshot 在沒有 tn 狀態時給的 snapshot：我方、召喚石是空陣列，第幾場與連鎖是 undefined */
+function withoutState(snapshot: BattleSnapshot): BattleSnapshot {
+  return { ...snapshot, battleCount: undefined, chainUsed: undefined, allies: [], summons: [] }
+}
+
+/** toBattleSnapshot 在沒有戰鬥紀錄時給的 snapshot：history 是空陣列，dead 與技能 used 是 undefined */
+function withoutRecord(snapshot: BattleSnapshot): BattleSnapshot {
+  return {
+    ...snapshot,
+    history: [],
+    allies: snapshot.allies.map(ally => ({ ...ally, dead: undefined, abilities: ally.abilities.map(ability => ({ ...ability, used: undefined })) })),
+  }
+}
+
 describe('toDiagnostics', () => {
   it('有值的欄位照原值顯示；布林顯示「是」「否」；召喚來源用中文；只列前排角色', () => {
     assert.deepEqual(toDiagnostics(full), {
+      battleCount: 2,
       turn: 3,
       hpPercent: 49.5,
       turnStartHp: 50,
@@ -51,6 +66,7 @@ describe('toDiagnostics', () => {
       omen: '600万ダメ5ヒット',
       chain: 77,
       chainUsed: '是',
+      bossBuffs: ['3353_1', '1427'],
       allies: [
         {
           id: '450201',
@@ -83,28 +99,29 @@ describe('toDiagnostics', () => {
     })
   })
 
-  it('沒有資料的欄位全部顯示「未取得」，不猜值', () => {
-    const empty: BattleSnapshot = {
-      battleCount: 1,
+  it('有資料、但個別欄位沒有值時，那些欄位顯示「未取得」，不猜值', () => {
+    const sparse: BattleSnapshot = {
+      ...full,
+      turn: undefined,
+      hpPercent: undefined,
+      gauge: undefined,
+      chain: undefined,
       omenText: '',
-      bossBuffStatuses: [],
       allies: [{ id: '450201', isLeader: true, front: true, dead: false, buffs: [{ status: '1001' }], abilities: [{ slot: 1, abilityId: '100', used: 0 }] }],
       summons: [{ from: 'main', id: '2040080000', used: 0 }],
-      chainUsed: false,
-      history: [],
+      history: [{ turn: 1, omenText: '', guards: [], actions: [] }],
     }
 
-    const diagnostics = toDiagnostics(empty)
+    const diagnostics = toDiagnostics(sparse)
 
     assert.equal(diagnostics.turn, NOT_AVAILABLE)
     assert.equal(diagnostics.hpPercent, NOT_AVAILABLE)
     assert.equal(diagnostics.turnStartHp, NOT_AVAILABLE)
     assert.equal(diagnostics.gauge, NOT_AVAILABLE)
     assert.equal(diagnostics.chain, NOT_AVAILABLE)
-    assert.equal(diagnostics.chainUsed, '否')
     // 沒有預兆是已知的「沒有」，不是未取得
     assert.equal(diagnostics.omen, '無')
-    assert.deepEqual(diagnostics.allies[0], {
+    assert.deepEqual(diagnostics.allies, [{
       id: '450201',
       isLeader: '是',
       alive: '是',
@@ -112,8 +129,41 @@ describe('toDiagnostics', () => {
       hpMax: NOT_AVAILABLE,
       buffs: [{ status: '1001', remain: NOT_AVAILABLE }],
       abilities: [{ slot: 1, abilityId: '100', used: 0, ready: NOT_AVAILABLE, recast: NOT_AVAILABLE }],
-    })
+    }])
     assert.deepEqual(diagnostics.summons, [{ from: '主召', id: '2040080000', used: 0, ready: NOT_AVAILABLE, recast: NOT_AVAILABLE }])
+  })
+
+  it('沒有 tn 狀態時：第幾場、發動過連鎖、前排角色、召喚石都是「未取得」', () => {
+    const diagnostics = toDiagnostics(withoutState(full))
+
+    assert.equal(diagnostics.battleCount, NOT_AVAILABLE)
+    assert.equal(diagnostics.chainUsed, NOT_AVAILABLE)
+    assert.equal(diagnostics.allies, NOT_AVAILABLE)
+    assert.equal(diagnostics.summons, NOT_AVAILABLE)
+    // 上一回合來自 battleRecord，照常有值
+    assert.deepEqual(diagnostics.lastTurn, { turn: 2, fc: '是', guards: ['3040617000', '450201'], omen: '浄土' })
+  })
+
+  it('沒有戰鬥紀錄時：存活、技能用過、回合開始 HP%、上一回合都是「未取得」；召喚次數照常', () => {
+    const diagnostics = toDiagnostics(withoutRecord(full))
+    const allies = diagnostics.allies as Exclude<typeof diagnostics.allies, string>
+
+    assert.deepEqual(allies.map(ally => ally.alive), [NOT_AVAILABLE, NOT_AVAILABLE])
+    assert.deepEqual(allies[0].abilities.map(ability => ability.used), [NOT_AVAILABLE, NOT_AVAILABLE])
+    assert.equal(diagnostics.turnStartHp, NOT_AVAILABLE)
+    assert.equal(diagnostics.lastTurn, NOT_AVAILABLE)
+    assert.deepEqual((diagnostics.summons as Exclude<typeof diagnostics.summons, string>).map(summon => summon.used), [1, 0, 1])
+  })
+
+  it('兩者都沒有、boss buff 也沒有資料時：這些欄位全部是「未取得」', () => {
+    const diagnostics = toDiagnostics({ ...withoutRecord(withoutState(full)), bossBuffStatuses: undefined })
+
+    for (const key of ['battleCount', 'chainUsed', 'bossBuffs', 'allies', 'summons', 'lastTurn', 'turnStartHp'] as const)
+      assert.equal(diagnostics[key], NOT_AVAILABLE, key)
+  })
+
+  it('boss buff 是空陣列時照原樣輸出（面板顯示「無」），不是「未取得」', () => {
+    assert.deepEqual(toDiagnostics({ ...full, bossBuffStatuses: [] }).bossBuffs, [])
   })
 
   it('history 只有目前回合時，上一回合顯示「沒有上一回合」；回合開始 HP 取最後一筆', () => {

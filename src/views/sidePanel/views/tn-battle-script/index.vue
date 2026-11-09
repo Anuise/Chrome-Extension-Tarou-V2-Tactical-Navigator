@@ -1,15 +1,17 @@
 <script setup lang="ts">
+import type { MessageHandler } from 'element-plus'
 import type { BattleScript } from 'tn'
-import type { ImportResult } from '~/tn/battle-script/manage'
+import type { ImportResult, ScriptFile } from '~/tn/battle-script/manage'
 import { useFileDialog } from '@vueuse/core'
 import copy from 'copy-text-to-clipboard'
 import { ElMessage } from 'element-plus'
-import { computed, ref, watch } from 'vue'
+import { computed, onDeactivated, ref, watch } from 'vue'
 import { selectAdvice } from '~/tn/battle-script/core'
 import { exportScript, importScripts, removeScript } from '~/tn/battle-script/manage'
+import { exportBattleRecord, findOngoingRecord } from '~/tn/battle-script/record'
 import { toBattleSnapshot } from '~/tn/battle-script/snapshot'
 import { battleScripts, selectedScriptKey } from '~/tn/battle-script/store'
-import { battleInfo, BossCard } from '~/tn/core/upstream'
+import { battleInfo, battleRecord, BossCard } from '~/tn/core/upstream'
 
 const snapshot = computed(() => toBattleSnapshot(battleInfo.value))
 // upstream 沒有「戰鬥中」旗標，battleInfo 戰後也不清除：有最近一場的戰鬥資料就視為在戰鬥中
@@ -20,10 +22,20 @@ const selection = computed(() => selectAdvice(battleScripts.value.filter(s => s.
 // 戰鬥資料戰後不清除，幾乎一直「在戰鬥中」，所以腳本管理放在獨立分頁，戰前整理不用捲過 boss 狀態卡與建議區。
 // 不在戰鬥中（剛安裝）時預設顯示腳本管理；進入新的一場戰鬥時自動切到目前戰鬥
 const tab = ref(inBattle.value ? 'battle' : 'manage')
+
+/**
+ * 目前這場可能還沒打完時的 warning：不會自動消失，下次匯出前先關掉，畫面上只留最新一則。
+ * warning 掛在 body 上，換了一場或切到別的側欄頁時內容已經過時，也要關掉
+ */
+let ongoingWarning: MessageHandler | undefined
+
 watch(() => battleInfo.value.bossInfo?.battleId, (battleId) => {
+  ongoingWarning?.close()
   if (battleId)
     tab.value = 'battle'
 })
+// 側欄各頁包在 keep-alive 裡，切到別的側欄頁時元件只會 deactivate，不會卸載
+onDeactivated(() => ongoingWarning?.close())
 
 function handleCopyQuestInfo() {
   const { questId, battleCount, bossBuffStatuses } = snapshot.value
@@ -54,14 +66,35 @@ function handleImport() {
   open()
 }
 
-function handleExport(script: BattleScript) {
-  const { name, text } = exportScript(script)
+/** 以瀏覽器下載一個 JSON 檔 */
+function download({ name, text }: ScriptFile) {
   const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }))
   const link = document.createElement('a')
   link.href = url
   link.download = name
   link.click()
   URL.revokeObjectURL(url)
+}
+
+function handleExport(script: BattleScript) {
+  download(exportScript(script))
+}
+
+/** 匯出 upstream 的 battleRecord（最近 10 場）全部場次，只讀不寫 */
+function handleExportRecord() {
+  ongoingWarning?.close()
+  const records = battleRecord.value
+  if (records.length === 0) {
+    ElMessage.warning('沒有戰鬥紀錄可以匯出')
+    return
+  }
+  download(exportBattleRecord(records, new Date()))
+  // 目前這場可能還沒打完時照樣下載，但提醒紀錄只到進行中的回合；tn 分不出這場已經結束（全滅、撤退）還是還在打，兩種情況都要寫
+  const ongoing = findOngoingRecord(records, battleInfo.value)
+  if (ongoing)
+    ongoingWarning = ElMessage.warning({ message: `已匯出最近 ${records.length} 場。目前這場可能還沒打完：如果還在打，紀錄只到進行中的第 ${ongoing.turn} 回合，打完後再匯出一次；如果這場已經結束（包括全滅、撤退），紀錄就是完整的`, duration: 0, showClose: true })
+  else
+    ElMessage.success(`已匯出最近 ${records.length} 場`)
 }
 
 function handleRemove(script: BattleScript) {
@@ -118,11 +151,17 @@ function handleRemove(script: BattleScript) {
               無符合腳本
             </div>
           </div>
-          <el-button size="small" type="primary" @click="handleCopyQuestInfo">
-            複製目前關卡資訊
-          </el-button>
         </template>
         <el-result v-else icon="info" sub-title="進入戰鬥後會顯示目前關卡資訊與操作建議" />
+        <!-- 匯出戰鬥紀錄不限戰鬥中，沒有戰鬥資料時也能按，沒有紀錄時提示 -->
+        <div flex>
+          <el-button v-if="inBattle" size="small" type="primary" @click="handleCopyQuestInfo">
+            複製目前關卡資訊
+          </el-button>
+          <el-button size="small" @click="handleExportRecord">
+            匯出戰鬥紀錄
+          </el-button>
+        </div>
       </div>
     </el-tab-pane>
 

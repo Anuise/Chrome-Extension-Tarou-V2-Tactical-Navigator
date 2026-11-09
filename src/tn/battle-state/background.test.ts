@@ -2,6 +2,7 @@ import type { BattleState } from 'tn'
 import assert from 'node:assert/strict'
 // eslint-disable-next-line test/no-import-node-test
 import { beforeEach, describe, it, mock } from 'node:test'
+import { tnUnpack } from '../core/dispatch'
 import { BATTLE_STATE_KEY, handleBattleState } from './background'
 
 // 假的 chrome.storage.local：get、set 都晚一拍才完成，沒有串成佇列時後一筆會讀到舊值
@@ -84,6 +85,26 @@ describe('handleBattleState', () => {
       assert.equal(consoleError.mock.callCount(), 1)
       assert.match(String(consoleError.mock.calls[0].arguments[0]), /^\[tn\]/)
       assert.deepEqual(stored().summons.map(s => s.used), [0, 1])
+    }
+    finally {
+      consoleError.mock.restore()
+    }
+  })
+})
+
+describe('接線（dispatch.ts 的 handlers）', () => {
+  beforeEach(() => {
+    store = {}
+  })
+
+  it('tnUnpack 會把戰鬥回應交給戰鬥狀態：handleBattleState 在 handlers 裡', async () => {
+    // 錄製器也會收到這筆回應；這個假環境沒有 navigator.locks，它印的錯誤和本測試無關
+    const consoleError = mock.method(console, 'error', () => {})
+    try {
+      tnUnpack(JSON.stringify(start))
+      // 無關的 URL 不排工作，只回傳佇列的尾端：等 tnUnpack 排進去的那筆寫完
+      await handleBattleState({ url: '/quest/quest_data' })
+      assert.equal(stored().raidId, '111')
     }
     finally {
       consoleError.mock.restore()

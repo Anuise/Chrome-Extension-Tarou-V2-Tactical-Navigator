@@ -369,6 +369,8 @@ describe('selectAdvice', () => {
     ]
 
     assert.deepEqual(selectAdvice(scripts, snapshot).matchedScripts.map(m => m.script.name), ['不分場次', '第 1 場'])
+    // 不知道第幾場時，只有沒寫 battleCount 的腳本相符
+    assert.deepEqual(selectAdvice(scripts, { ...snapshot, battleCount: undefined }).matchedScripts.map(m => m.script.name), ['不分場次'])
   })
 
   it('turn 寫單一數字時，回合相同才成立', () => {
@@ -411,6 +413,7 @@ describe('selectAdvice', () => {
     assert.equal(holds({ bossBuff: '1001' }), true)
     assert.equal(holds({ bossBuff: '052_1' }), false)
     assert.equal(holds({ bossBuff: '4052' }, { ...snapshot, bossBuffStatuses: [] }), false)
+    assert.equal(holds({ bossBuff: '4052' }, { ...snapshot, bossBuffStatuses: undefined }), false)
   })
 
   it('多個條件全部成立才成立（AND）', () => {
@@ -613,6 +616,10 @@ describe('selectAdvice 的新條件', () => {
   it('ally 的 dead、front 要和角色狀態相等', () => {
     assert.equal(holds({ ally: { who: DOG, dead: true, front: true } }, full), true)
     assert.equal(holds({ ally: { who: DOG, dead: false } }, full), false)
+    // 不知道存活時，不論寫 true 或 false 都不成立
+    const unknown = { ...full, allies: full.allies.map(ally => ({ ...ally, dead: undefined })) }
+    assert.equal(holds({ ally: { who: DOG, dead: true } }, unknown), false)
+    assert.equal(holds({ ally: { who: '主角', dead: false } }, unknown), false)
     assert.equal(holds({ ally: { who: BACK_ROW, front: false } }, full), true)
     assert.equal(holds({ ally: { who: BACK_ROW, front: true } }, full), false)
   })
@@ -657,6 +664,9 @@ describe('selectAdvice 的新條件', () => {
     assert.equal(holds({ ability: { who: '主角', slot: 3, recast: [0, 99] } }, full), false)
     assert.equal(holds({ ability: { who: '主角', slot: 1, used: [1, 99] } }, full), true)
     assert.equal(holds({ ability: { who: '主角', slot: 2, used: [1, 99] } }, full), false)
+    // 不知道用過幾次時不成立（「還沒用過」也不成立）
+    const unknown = { ...full, allies: full.allies.map(ally => ({ ...ally, abilities: ally.abilities.map(ability => ({ ...ability, used: undefined })) })) }
+    assert.equal(holds({ ability: { who: '主角', slot: 2, used: [0, 0] } }, unknown), false)
   })
 
   it('ability 找不到角色或技能格時不成立；只寫 who 與 slot 時找得到就成立', () => {
@@ -689,6 +699,7 @@ describe('selectAdvice 的新條件', () => {
     assert.equal(holds({ summon: { id: SUB_SUMMON, ready: false } }, full), false)
     assert.equal(holds({ summon: { id: SUB_SUMMON, recast: [0, 99] } }, full), false)
     assert.equal(holds({ summon: { id: SUB_SUMMON, used: [0, 0] } }, full), true)
+    assert.equal(holds({ summon: { id: SUB_SUMMON, used: [0, 0] } }, { ...full, summons: full.summons.map(summon => ({ ...summon, used: undefined })) }), false)
   })
 
   it('summon 寫成陣列時每一項都要成立', () => {
@@ -703,6 +714,12 @@ describe('selectAdvice 的新條件', () => {
     assert.equal(holds({ chainUsed: false }, full), true)
     assert.equal(holds({ chainUsed: true }, full), false)
     assert.equal(holds({ chainUsed: true }, { ...full, chainUsed: true }), true)
+    assert.equal(holds({ chainUsed: false }, { ...full, chainUsed: true }), false)
+  })
+
+  it('chainUsed 沒有值時，不論寫 true 或 false 都不成立', () => {
+    assert.equal(holds({ chainUsed: false }, { ...full, chainUsed: undefined }), false)
+    assert.equal(holds({ chainUsed: true }, { ...full, chainUsed: undefined }), false)
   })
 
   it('lastTurn 看倒數第二筆歷史；只有目前回合或沒有歷史時不成立', () => {

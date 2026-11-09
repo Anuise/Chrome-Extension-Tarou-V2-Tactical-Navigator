@@ -13,8 +13,17 @@ function parse(raw: unknown): BattleState | null {
  */
 export const battleState = shallowRef<BattleState | null>(null)
 
-chrome.storage.local.get(BATTLE_STATE_KEY).then(items => battleState.value = parse(items[BATTLE_STATE_KEY]))
+// onChanged 先收到新狀態時，晚回來的 get 是舊快照，不可蓋掉（同錄製頁的做法）
+let changed = false
+chrome.storage.local.get(BATTLE_STATE_KEY)
+  .then((items) => {
+    if (!changed)
+      battleState.value = parse(items[BATTLE_STATE_KEY])
+  })
+  .catch(error => console.error('[tn] 讀取戰鬥狀態失敗', error))
 chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === 'local' && changes[BATTLE_STATE_KEY])
+  if (areaName === 'local' && changes[BATTLE_STATE_KEY]) {
+    changed = true
     battleState.value = parse(changes[BATTLE_STATE_KEY].newValue)
+  }
 })

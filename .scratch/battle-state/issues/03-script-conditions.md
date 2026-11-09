@@ -23,31 +23,38 @@
 - `types/modules/tn.d.ts`：`BattleScriptCondition` 與四個子型別。
 - 規格原文在 `.claude-team/research/battle-data/snapshot-spec.md`（本機，含修訂 1、2）。本票摘要成使用者與審查員需要的部分。
 
-### `BattleSnapshot` 新增的欄位
+### `BattleSnapshot` 新增與改成選填的欄位
 
-| 欄位                         | 意思                                                                                                       |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `allies[]`                   | 我方角色，依 start.json `player.param` 的順序（含後排）；沒有資料時為空陣列                                |
-| `allies[].id`                | pid 底線前的部分；角色是角色 ID（例：尤妮 `3040390000`）                                                   |
-| `allies[].isLeader`          | 主角                                                                                                       |
-| `allies[].front`、`dead`     | 在前排、戰鬥不能                                                                                           |
-| `allies[].hp`、`hpMax`       | 角色 HP；拿不到時 `undefined`                                                                              |
-| `allies[].buffs[]`           | `{ status, remain? }`；`remain` 只有拿得到剩餘回合時才有                                                   |
-| `allies[].abilities[]`       | `{ slot, abilityId, ready?, recast?, used }`；`slot` 1 起算，`used` 是本場用過幾次                         |
-| `summons[]`                  | `{ from, id, ready?, recast?, used }`；`from` 是 `main`、`sub` 或 `friend`                                 |
-| `chain`                      | 連鎖條（DC）百分比；拿不到時 `undefined`                                                                   |
-| `chainUsed`                  | 本場是否發動過連鎖技能                                                                                     |
-| `history[]`                  | 每回合一筆，依回合遞增，**最後一筆是目前回合**                                                             |
-| `history[].hpAtStart`        | 回合開始時的 boss HP%                                                                                      |
-| `history[].omenText`         | 回合開始時的預兆文字，多個以 `\|` 連接                                                                     |
-| `history[].bossBuffStatuses` | 回合開始時的 boss buff；tn 沒記到時 `undefined`                                                            |
-| `history[].guards`           | 這回合防禦的角色 id                                                                                        |
-| `history[].actions[]`        | `{ type, id? }`，這回合依序做的事；`type` 沿用 upstream：`ability`、`fc`、`summon`、`attack`、`temporary`… |
+沒有資料時一律是 `undefined`，不補預設值（`snapshot-spec.md` 修訂 3）。資料從哪裡來、什麼時候沒有資料，見 04。
+
+| 欄位                         | 意思                                                                                                        |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `battleCount`（既有）        | 多段戰的第幾場；改成選填，沒有資料時 `undefined`                                                            |
+| `bossBuffStatuses`（既有）   | boss 的 buff 與 debuff status；改成選填，沒有資料時 `undefined`                                             |
+| `allies[]`                   | 我方角色，依 start.json `player.param` 的順序（含後排）；沒有資料時為空陣列                                 |
+| `allies[].id`                | pid 底線前的部分；角色是角色 ID（例：尤妮 `3040390000`）                                                    |
+| `allies[].isLeader`          | 主角                                                                                                        |
+| `allies[].front`、`dead`     | 在前排、戰鬥不能；`dead` 沒有資料時 `undefined`                                                             |
+| `allies[].hp`、`hpMax`       | 角色 HP；拿不到時 `undefined`                                                                               |
+| `allies[].buffs[]`           | `{ status, remain? }`；`remain` 只有拿得到剩餘回合時才有                                                    |
+| `allies[].abilities[]`       | `{ slot, abilityId, ready?, recast?, used? }`；`slot` 1 起算，`used` 是本場用過幾次，沒有資料時 `undefined` |
+| `summons[]`                  | `{ from, id, ready?, recast?, used? }`；`from` 是 `main`、`sub` 或 `friend`                                 |
+| `chain`                      | 連鎖條（DC）百分比；拿不到時 `undefined`                                                                    |
+| `chainUsed`                  | 本場是否發動過連鎖技能；沒有資料時 `undefined`                                                              |
+| `history[]`                  | 每回合一筆，依回合遞增，**最後一筆是目前回合**                                                              |
+| `history[].hpAtStart`        | 回合開始時的 boss HP%                                                                                       |
+| `history[].omenText`         | 回合開始時的預兆文字，多個以 `\|` 連接                                                                      |
+| `history[].bossBuffStatuses` | 回合開始時的 boss buff；tn 沒記到時 `undefined`                                                             |
+| `history[].guards`           | 這回合防禦的角色 id                                                                                         |
+| `history[].actions[]`        | `{ type, id? }`，這回合依序做的事；`type` 沿用 upstream：`ability`、`fc`、`summon`、`attack`、`temporary`…  |
 
 ### 條件的通則
 
 - 全部是選填欄位。寫了的全部成立，規則才成立（AND），和既有條件一樣。
 - **沒有值時不成立**：snapshot 裡對應的值是 `undefined`，或找不到對象（角色、技能格、召喚石、上一回合）時，該條件不成立。被 `not` 包住時則反過來成立，這是預期行為。
+  - 布林的 `chainUsed`、`ally.dead` 也一樣：snapshot 是 `undefined` 時，不論寫 `true` 或 `false` 都不成立。
+  - `bossBuff`：snapshot 的 `bossBuffStatuses` 是 `undefined` 時不成立。
+- 腳本寫了 `battleCount`，而 snapshot 的 `battleCount` 是 `undefined`（不知道第幾場）時，**腳本不相符**；沒寫 `battleCount` 的腳本照常相符。
 - 區間沿用 `BattleScriptRange`：`[a, b]` 兩端都包含，端點順序不限。
 - `who`：寫 `"主角"` 時對到 `isLeader` 的角色，其他字串對到 `id` 相同的角色。
 
@@ -93,6 +100,8 @@
 ### 限制
 
 - 目前（04 之後）snapshot 一律沒有值的欄位：`allies[].hp`、`hpMax`、`abilities[].ready`、`recast`、`summons[].ready`、`recast`、`chain`、`buffs[].remain`。用到它們的條件**一律不成立**（被 `not` 包住時一律成立），要等 T4b 確認現行格式後才會有值。
+- 側欄沒收到這一場的 start.json 時（例如載入新版外掛後沒有重新整理遊戲分頁），`battleCount`、`chainUsed`、`allies`、`summons` 沒有值；upstream 沒有這一場的戰鬥紀錄時，`dead`、`used`、`history` 沒有值。用到它們的條件不成立，寫了 `battleCount` 的腳本不相符。
+- `seenOmen`、`lastTurn.omen` 只看每回合開始時的預兆，加上目前顯示中的預兆。回合中出現、又在同一回合消掉的預兆看不到。依 gbf.wiki，預兆只在回合結束時出現，所以推定很少發生；T3 錄檔確認之後，如果真的會發生，再由 T4b 累積回合中出現過的預兆。
 - `stack` 的取法是通則，status 底線後的數字不一定是層數：依 status 的基礎 ID 而定，也可能是 Lv、百分比或剩餘回合，要逐個 ID 確認後再寫。
 - `lastTurn.attack` 只看上一回合有沒有普攻、該角色有沒有防禦，不知道該角色實際有沒有出手（例如戰鬥不能或被麻痺）。
 - 沒有新增「DC 判斷式」這類算式條件，用 `chain` 加 `hp` 拆成幾條區間規則。
@@ -151,18 +160,22 @@
    }
    ```
 
-   匯入後回到「目前戰鬥」分頁，一邊打一邊對照：
+   匯入後：
+   - 到「腳本管理」確認「條件測試」卡片上的「關卡」是剛才記下的數字。`<關卡>` 沒換掉也能匯入成功，但不會相符，規則一條都不會出現。
+   - 回到「目前戰鬥」分頁。「腳本：」是下拉選單時（同一關卡還有其他啟用的腳本），選「條件測試」；或改用沒有其他腳本的關卡測。
 
-   | 規則 | 什麼時候應該出現                          |
-   | ---- | ----------------------------------------- |
-   | A    | 一直出現                                  |
-   | B    | 放 FC 的下一回合出現，再下一回合消失      |
-   | C    | 主角防禦後按攻擊，下一回合出現            |
-   | D    | 按過主角 1 技之後一直出現                 |
-   | E    | 召喚好友召喚石之後一直出現                |
-   | F    | 遊戲畫面 boss HP 條上方的預兆有數字時出現 |
-   | G    | 第 2 回合起一直出現                       |
-   | H    | 一直不出現（能不能按要等 T4b）            |
+   一邊打一邊對照：
+
+   | 規則 | 什麼時候應該出現                                                                 |
+   | ---- | -------------------------------------------------------------------------------- |
+   | A    | 一直出現                                                                         |
+   | B    | （FC 槽滿、放得出 FC 時）放 FC 的下一回合出現，再下一回合消失                    |
+   | C    | 主角防禦後按攻擊，下一回合出現                                                   |
+   | D    | 按過主角 1 技之後一直出現。用沒有子技能的 1 技測（按下去不會跳出選擇畫面的技能） |
+   | E    | 召喚好友召喚石之後一直出現                                                       |
+   | F    | 遊戲畫面 boss HP 條上方的預兆有數字時出現                                        |
+   | G    | 第 2 回合起一直出現                                                              |
+   | H    | 一直不出現（能不能按要等 T4b）                                                   |
 
 4. 測完到「腳本管理」把這兩份測試腳本刪掉。
 
@@ -174,11 +187,20 @@
 
 ### 審查
 
-組 B（03＋04＋05）審查前。審查結論之後補在這裡，處理紀錄放 `.claude-team/research/battle-data/reviews/`（本機）。
+組 B（03＋04＋05）三輪審查。和本票有關的修正：
+
+- 第 1 輪：
+  - 缺資料時不補預設值：`battleCount`、`chainUsed`、`bossBuffStatuses`、`dead`、`used` 改成選填，沒有資料時條件不成立，寫了 `battleCount` 的腳本不相符（I1）；
+  - 補 `chainUsed: false` 遇到 `true` 不成立的測試（I5 的 C22）；
+  - 限制補上 `seenOmen`、`lastTurn.omen` 看不到回合中出現又消掉的預兆（I3，實作等 T3）；
+  - 手動驗證第 3 步補上選腳本、確認關卡、規則 B 與 D 的說明（I8）。
+
+處理紀錄在 `.claude-team/research/battle-data/reviews/B-fixes-r1.md`（本機）。
 
 ### 驗證紀錄
 
-- `node:test`：`src/tn/battle-script/core.test.ts` 67 個。`npx tsx --test "src/tn/**/*.test.ts" "scripts/tn/**/*.test.ts"` 共 240 個全部通過（05 完成時）。
+- `node:test`：`src/tn/battle-script/core.test.ts` 68 個。`npx tsx --test "src/tn/**/*.test.ts" "scripts/tn/**/*.test.ts"` 共 257 個全部通過（組 B 第 1 輪修正後）。
 - `pnpm tc`、`pnpm bp` 通過；`npx tsx scripts/tn/validate-battle-script.ts battle-scripts/*.json` 三份都通過。
-- 條件判斷只有單元測試，Chromium 冒煙測試（見 05）沒有測。`snapshot.test.ts` 另有一個測試，用 04 組出的 snapshot 讓 8 條新條件的規則成立，`ability.ready` 的規則不成立。
+- `snapshot.test.ts` 另有兩個測試：用 04 組出的 snapshot 讓 8 條新條件的規則成立、`ability.ready` 的規則不成立；以及沒有 tn 狀態、沒有戰鬥紀錄、兩者都沒有時，`chainUsed`、`ally.dead`、`ability.used`、`bossBuff` 的規則不成立，寫了 `battleCount` 的腳本不相符。
+- 組 B 第 1 輪修正的 Chromium 冒煙測試（見 05）也放了兩份測試腳本，在同樣四種情況下確認側欄上成立的規則與相符的腳本。
 - 還沒在真正的 Chrome 和遊戲裡驗證。

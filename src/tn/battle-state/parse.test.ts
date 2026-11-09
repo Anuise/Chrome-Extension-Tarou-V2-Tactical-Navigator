@@ -145,6 +145,22 @@ describe('applyStartJson', () => {
     ])
   })
 
+  it('同一場重新整理時，某一格換了石頭，那一格的召喚次數歸零，其他格保留', () => {
+    let state = applyStartJson(null, startJson())
+    state = applyActionResult(state, action([]), 'summon', { summon_id: 1 })
+    state = applyActionResult(state, action([]), 'summon', { summon_id: 2 })
+    state = applyActionResult(state, action([]), 'summon', { summon_id: 'supporter' })
+
+    const reloaded = applyStartJson(state, startJson({ summon: [{ id: '2040080000' }, { id: '2040111000' }, { id: null }], supporter: { id: '2040222000' } }))
+
+    assert.deepEqual(reloaded.summons, [
+      { from: 'main', id: '2040080000', used: 1 },
+      { from: 'sub', id: '2040111000', used: 0 },
+      { from: 'sub', id: '', used: 0 },
+      { from: 'friend', id: '2040222000', used: 0 },
+    ])
+  })
+
   it('換場（raid_id 不同）時整份重建：召喚次數、chainUsed 與歷史都歸零', () => {
     let state = applyStartJson(null, startJson())
     state = applyActionResult(state, action([], { turn: 2 }), 'summon', { summon_id: 1 })
@@ -309,6 +325,13 @@ describe('reduceBattleState', () => {
     }) as BattleState
 
     assert.deepEqual(next.summons.map(s => s.used), [0, 0, 0, 1])
+  })
+
+  it('召喚回應沒有 requestData（GET 請求）時不拋錯，也不計次', () => {
+    const state = reduceBattleState(null, start)
+    const next = reduceBattleState(state, { url: '/rest/multiraid/summon_result.json', responseData: action([]) }) as BattleState
+
+    assert.deepEqual(next.summons.map(s => s.used), [0, 0, 0, 0])
   })
 
   it('召喚回應的 requestData 是 null 時不拋錯，也不計次', () => {

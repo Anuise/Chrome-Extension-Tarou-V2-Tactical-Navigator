@@ -27,7 +27,7 @@
 |---|---|
 | 共用基礎 | `src/tn/core/`（`dispatch.ts` 的 `tnUnpack`、`storage.ts`、`upstream.ts`、`views.ts`） |
 | 各工具 | `src/tn/<tool>/` |
-| 側欄頁 | `src/views/sidePanel/views/tn-<name>/index.vue`（sidePanel 的 glob 只掃一層，必須放這裡） |
+| 側欄頁 | `src/views/sidePanel/views/tn-<name>/index.vue`（sidePanel 的 glob 只掃一層，必須放這裡）；同一資料夾底下的子元件（例如 `tn-battle-script/DiagnosticsPanel.vue`）也屬於 fork 路徑：sidePanel 的 glob 只收 `views/*/index.vue`，子元件不會被當成另一個側欄頁 |
 | popup 元件 | `src/views/popup/components/Tn<Name>.vue`（使用預設 800×800） |
 | 獨立 HTML 頁 | `src/views/tn<Name>/{main.html,main.ts,main.vue}`（`getEntry()` 自動收錄） |
 | 型別 | `types/modules/tn.d.ts`（`declare module 'tn'`） |
@@ -41,7 +41,7 @@
 
 命名一律用 `tn` 前綴（[ADR-0002](../adr/0002-tn-namespace.md)）：
 
-- storage key：`tn:<key>`。在 tn 檔案內直接呼叫 `useWebExtensionStorage('tn:<key>', default)`。
+- storage key：`tn:<key>`。在 tn 檔案內直接呼叫 `useWebExtensionStorage('tn:<key>', default)`。例外：只由 background 寫入、側欄只讀的 key（目前是 `tn:battle-state`、`tn:rec:index`），側欄改用直接讀 `chrome.storage.local`、加上監聽 `onChanged` 的唯讀 ref。原因：`useWebExtensionStorage` 第一次讀取時會把讀到的值寫回 storage，可能蓋掉 background 剛寫入的新值（`src/composables/useWebExtensionStorage.ts:95,103,118-125`）。
 - webext-bridge 訊息名：`tn:<name>`，宣告在 `types/tn-shim.d.ts`。
 - 側欄頁 key `tn-<name>`；popup 元件 `Tn<Name>`；HTML entry 目錄 `tn<Name>`。
 

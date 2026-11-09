@@ -146,7 +146,7 @@ declare module 'tn' {
     formation: number[]
     /** 召喚石：主召、副召依格號排列（第 n 格在索引 n-1），好友召喚在最後 */
     summons: BattleStateSummon[]
-    /** 連鎖技能（DC）的 ability ID，依 start.json group_gauge.ability_list 的順序 */
+    /** 連鎖技能（DC）的 ability ID，依 start.json group_gauge.ability_list 的順序；目前沒有程式讀，供之後區分 DC 左右 */
     chainAbilityIds: string[]
     /** 本場發動過連鎖技能 */
     chainUsed: boolean

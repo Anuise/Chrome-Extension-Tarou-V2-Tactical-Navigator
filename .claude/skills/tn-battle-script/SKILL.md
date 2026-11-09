@@ -101,7 +101,7 @@ description: 戰鬥腳本協作：與腳本作者對話，產生或修改 `battl
 | 欄位 | 比對的資料 | 何時算確認 |
 | --- | --- | --- |
 | `questId` | 關卡資訊 JSON 的 `questId`（字串） | 取自關卡資訊 JSON |
-| `battleCount` | 側欄頁一律當成 1（upstream 沒有保存第幾場） | 省略這個欄位；寫 2 以上的腳本永遠不會相符 |
+| `battleCount` | 多段戰的第幾場，取自 tn 解析的 start.json `battle.count`；側欄沒收到這一場的 start.json 時是未知，寫了 `battleCount` 的腳本不相符 | 取自關卡資訊 JSON 的 `battleCount`；JSON 沒有這個欄位時省略 |
 | `turn` | 回合數 | 一律確認 |
 | `hp` | boss HP 百分比，含小數（例如 79.53） | 一律確認 |
 | `gauge` | boss 獨有計量條的遊戲原始值（顕現的破壞之力），即 boss 狀態卡上的紅色數字 | 作者在已知門檻看過狀態卡上的數字（知識庫寫的是 0–100%） |
